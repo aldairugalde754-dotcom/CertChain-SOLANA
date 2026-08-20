@@ -294,8 +294,10 @@ const db = mysql.createPool({
   connectionLimit: 10,
   queueLimit: 0,
   connectTimeout: 20000,
-  ssl: DB_SSL
+  // Si DB_SSL existe/es verdadero, pasa el objeto de SSL con rejectUnauthorized en false
+  ssl: DB_SSL ? { rejectUnauthorized: false } : undefined
 });
+
 
 // Log DB connection info for debugging
 console.log(`DB host=${DB_HOST} user=${DB_USER} database=${DB_NAME}`);
