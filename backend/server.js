@@ -257,30 +257,40 @@ async function ensureLocalImage(imageUrl, host) {
 }
 
 // CONFIGURACIÓN DE LA BASE DE DATOS
-const DB_HOST = process.env.DB_HOST || 'localhost';
-const DB_USER = process.env.DB_USER || process.env.DB_USERNAME || 'root';
+// CONFIGURACIÓN DE LA BASE DE DATOS
+const DB_HOST = process.env.DB_HOST || 'mysql-3b2d7573-aldairugalde754-3d62.j.aivencloud.com';
+const DB_USER = process.env.DB_USER || process.env.DB_USERNAME || 'avnadmin';
 const DB_PASSWORD = process.env.DB_PASSWORD || process.env.DB_PASS || '';
-const DB_NAME = process.env.DB_NAME || 'certchain_db';
-const DB_PORT = Number(process.env.DB_PORT || 3306);
-const DB_SSL = (DB_HOST && !['localhost', '127.0.0.1', '::1'].includes(DB_HOST)) || process.env.DB_SSL === 'true'
+const DB_NAME = process.env.DB_NAME || 'defaultdb';
+const DB_PORT = Number(process.env.DB_PORT || 11107);
+
+// Configuración dinámica de SSL (requerido para Aiven Cloud)
+const DB_SSL = (process.env.DB_SSL === 'true' || (DB_HOST && !['localhost', '127.0.0.1', '::1'].includes(DB_HOST)))
   ? { rejectUnauthorized: false }
   : undefined;
 
 async function ensureDatabaseExists() {
-  const connection = await mysql.createConnection({
-    host: DB_HOST,
-    user: DB_USER,
-    password: DB_PASSWORD,
-    port: DB_PORT,
-    database: 'mysql',
-    ssl: DB_SSL
-  });
+  // En Aiven 'defaultdb' ya viene creada por defecto y el usuario 'avnadmin' 
+  // no tiene permisos para consultar la base de datos del sistema 'mysql'.
+  if (DB_HOST.includes('aivencloud.com')) {
+    return; // Omitir en Aiven para evitar errores de permisos
+  }
 
   try {
+    const connection = await mysql.createConnection({
+      host: DB_HOST,
+      user: DB_USER,
+      password: DB_PASSWORD,
+      port: DB_PORT,
+      database: 'mysql',
+      ssl: DB_SSL
+    });
+
     await connection.execute(`CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\``);
     console.log(`Base de datos asegurada: ${DB_NAME}`);
-  } finally {
     await connection.end();
+  } catch (err) {
+    console.warn('No se pudo verificar la existencia de la BD (omitido si la BD ya existe):', err.message);
   }
 }
 
@@ -294,10 +304,8 @@ const db = mysql.createPool({
   connectionLimit: 10,
   queueLimit: 0,
   connectTimeout: 20000,
-  // Si DB_SSL existe/es verdadero, pasa el objeto de SSL con rejectUnauthorized en false
-  ssl: DB_SSL ? { rejectUnauthorized: false } : undefined
+  ssl: DB_SSL
 });
-
 
 // Log DB connection info for debugging
 console.log(`DB host=${DB_HOST} user=${DB_USER} database=${DB_NAME}`);
@@ -1603,12 +1611,11 @@ app.get('/api/marketplace/stats', async (req, res) => {
 });
 
 
-// Iniciar el servidor Express inmediatamente en 0.0.0.0
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Servidor ejecutándose en el puerto ${PORT}`);
-  
-  // Ejecutar verificación de tablas en segundo plano sin bloquear el arranque del puerto
+
+  // Iniciar la verificación de tablas en segundo plano sin congelar el arranque
   ensureDatabaseTables().catch(err => {
-    console.error('Error inicializando tablas en segundo plano:', err.message);
+    console.error('Error inicializando esquema de BD:', err);
   });
 });
