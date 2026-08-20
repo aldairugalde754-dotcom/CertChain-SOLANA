@@ -9,6 +9,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { uploadImageToIPFS, uploadMetadataToIPFS } from './pinataService.js';
 
 // Imports de Solana nativos (Estos sí soportan ESM perfectamente)
 import { Connection, PublicKey, Transaction, Keypair, sendAndConfirmTransaction, TransactionInstruction } from '@solana/web3.js';
