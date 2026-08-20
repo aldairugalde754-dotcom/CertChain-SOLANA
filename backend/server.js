@@ -911,7 +911,7 @@ app.patch('/api/certificates/:id', async (req, res) => {
 // ==========================================
 (async function ensureDatabaseTables() {
   try {
-   // await ensureDatabaseExists();
+    // await ensureDatabaseExists(); <--- Comentado para evitar el timeout
     await db.execute(`
       CREATE TABLE IF NOT EXISTS users (
         id INT AUTO_INCREMENT PRIMARY KEY,
