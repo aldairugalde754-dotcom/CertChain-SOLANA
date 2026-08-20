@@ -909,7 +909,7 @@ app.patch('/api/certificates/:id', async (req, res) => {
 // ==========================================
 // MARKETPLACE Y TABLAS BD: auto-creación y endpoints
 // ==========================================
-(async function ensureDatabaseTables() {
+async function ensureDatabaseTables() {
   try {
     // await ensureDatabaseExists(); <--- Comentado para evitar el timeout
     await db.execute(`
@@ -1026,7 +1026,7 @@ app.patch('/api/certificates/:id', async (req, res) => {
   } catch (err) {
     console.error('Error asegurando tablas de base de datos:', err);
   }
-})();
+};
 
 // ==========================================
 // AUCTIONS CRUD
@@ -1603,6 +1603,12 @@ app.get('/api/marketplace/stats', async (req, res) => {
 });
 
 
-app.listen(PORT, () => {
-  console.log(`🚀 Servidor ejecutándose en http://localhost:${PORT}`);
+// Iniciar el servidor Express inmediatamente en 0.0.0.0
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Servidor ejecutándose en el puerto ${PORT}`);
+  
+  // Ejecutar verificación de tablas en segundo plano sin bloquear el arranque del puerto
+  ensureDatabaseTables().catch(err => {
+    console.error('Error inicializando tablas en segundo plano:', err.message);
+  });
 });
