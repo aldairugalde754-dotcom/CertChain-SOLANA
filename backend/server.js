@@ -262,6 +262,9 @@ const DB_USER = process.env.DB_USER || process.env.DB_USERNAME || 'root';
 const DB_PASSWORD = process.env.DB_PASSWORD || process.env.DB_PASS || '';
 const DB_NAME = process.env.DB_NAME || 'certchain_db';
 const DB_PORT = Number(process.env.DB_PORT || 3306);
+const DB_SSL = (DB_HOST && !['localhost', '127.0.0.1', '::1'].includes(DB_HOST)) || process.env.DB_SSL === 'true'
+  ? { rejectUnauthorized: false }
+  : undefined;
 
 async function ensureDatabaseExists() {
   const connection = await mysql.createConnection({
@@ -269,7 +272,8 @@ async function ensureDatabaseExists() {
     user: DB_USER,
     password: DB_PASSWORD,
     port: DB_PORT,
-    database: 'mysql'
+    database: 'mysql',
+    ssl: DB_SSL
   });
 
   try {
@@ -289,7 +293,8 @@ const db = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
-  connectTimeout: 20000
+  connectTimeout: 20000,
+  ssl: DB_SSL
 });
 
 // Log DB connection info for debugging
