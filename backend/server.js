@@ -370,12 +370,20 @@ app.post('/api/auth/register', async (req, res) => {
 // RUTA DE LOGIN
 // ==========================================
 app.post('/api/auth/login', async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password } = req.body || {};
+  if (!email || !password) {
+    return res.status(400).json({ error: 'El correo electrónico y la contraseña son requeridos' });
+  }
+
   try {
     const [users] = await db.execute('SELECT * FROM users WHERE email = ?', [email]);
     if (users.length === 0) return res.status(400).json({ error: 'Credenciales inválidas' });
 
     const user = users[0];
+    if (!user.password_hash) {
+      return res.status(400).json({ error: 'Credenciales inválidas' });
+    }
+
     const validPassword = await bcrypt.compare(password, user.password_hash);
     if (!validPassword) return res.status(400).json({ error: 'Credenciales inválidas' });
 
@@ -384,8 +392,8 @@ app.post('/api/auth/login', async (req, res) => {
 
     res.json({ token, user: userPayload });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Error en el servidor' });
+    console.error('Error en /api/auth/login:', error);
+    res.status(500).json({ error: 'Error en el servidor', details: error.message });
   }
 });
 
