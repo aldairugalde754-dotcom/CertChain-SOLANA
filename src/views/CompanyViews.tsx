@@ -270,12 +270,44 @@ export function CompanyCertify({ user }: { user?: any } = {}) {
       // Step 2: Mintear cNFT en Solana Devnet usando la URI de metadatos IPFS
       setStatusMessage('2/3 Solicitando firma en wallet para mintear cNFT en Solana...');
 
-      const mintResult = await mintearCnft(umi, merkleTreeAddr, {
-        name: nombre || 'Certificado CertChain',
-        symbol: 'CERT',
-        uri: finalMetadataUri,
-        sellerFeeBasisPoints: 0,
-      });
+      let mintResult;
+      let targetTree = merkleTreeAddr;
+
+      try {
+        mintResult = await mintearCnft(umi, targetTree, {
+          name: nombre || 'Certificado CertChain',
+          symbol: 'CERT',
+          uri: finalMetadataUri,
+          sellerFeeBasisPoints: 0,
+        });
+      } catch (mintErr: any) {
+        const isUninit =
+          mintErr?.isAccountNotInitialized ||
+          mintErr?.message?.includes('AccountNotInitialized') ||
+          mintErr?.message?.includes('0xbc4') ||
+          mintErr?.message?.includes('tree_authority') ||
+          mintErr?.message?.includes('3012');
+
+        if (isUninit) {
+          console.warn('El Merkle Tree no está inicializado en Devnet. Creando un nuevo Merkle Tree automáticamente...');
+          setStatusMessage('El Merkle Tree actual no estaba inicializado en Solana. Creando nuevo Merkle Tree (por favor autoriza en tu wallet)...');
+
+          const newTreeRes = await crearArbol(umi);
+          targetTree = newTreeRes.merkleTree;
+          setMerkleTreeAddr(targetTree);
+          localStorage.setItem('certchain_tree', targetTree);
+
+          setStatusMessage('Re-intentando emisión del cNFT con el nuevo Merkle Tree...');
+          mintResult = await mintearCnft(umi, targetTree, {
+            name: nombre || 'Certificado CertChain',
+            symbol: 'CERT',
+            uri: finalMetadataUri,
+            sellerFeeBasisPoints: 0,
+          });
+        } else {
+          throw mintErr;
+        }
+      }
 
       // Extraer firma y asset id
       const txSignature =
