@@ -119,6 +119,7 @@ export function resolveAssetImage(value: any): string | null {
   const fixUrl = (urlStr: string): string => {
     const trimmed = urlStr.trim();
     if (!trimmed) return '';
+    if (trimmed.startsWith('ipfs://')) return `https://gateway.pinata.cloud/ipfs/${trimmed.replace('ipfs://', '')}`;
     if (trimmed.startsWith('/uploads/')) return `${API_BASE_URL}${trimmed}`;
     if (trimmed.startsWith('uploads/')) return `${API_BASE_URL}/${trimmed}`;
     return trimmed;

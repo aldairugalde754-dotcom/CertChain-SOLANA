@@ -1,6 +1,7 @@
 import React, { JSX, useEffect, useState } from 'react'
 import { useWallet } from '@solana/wallet-adapter-react'
 import { TopBar, SectionTitle, StatCard, Badge } from '../components/Shared'
+import { API_BASE_URL } from '../config'
 
 type DasAsset = any
 
@@ -98,7 +99,6 @@ export default function InventoryView(): JSX.Element {
 
   const RPC_URL = process.env.REACT_APP_DAS_RPC || process.env.VITE_DAS_RPC || 'https://devnet.helius-rpc.com/?api-key=568c37da-25db-4b18-b55c-143df09820c1'
   const CERTCHAIN_MERKLE_TREE_PUBKEY = process.env.REACT_APP_CERTCHAIN_MERKLE || '3dhSvYubK3XUhE5QdfYTgxJnc3rCdyU5Nt1TcjeC6K6a'
-  const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || process.env.VITE_BACKEND_URL || 'http://localhost:4000'
 
   useEffect(() => {
     let aborted = false

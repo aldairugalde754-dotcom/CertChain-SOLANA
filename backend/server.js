@@ -602,7 +602,7 @@ async function verifyTransactionOnChain(signature, expectedEmisor, expectedPropi
 // ENDPOINTS PARA SUBIR/CONSULTAR METADATOS E IMÁGENES
 // ==========================================
 
-// 1. ENDPOINT PARA CREAR REGISTRO PREVIO Y SUBIR IMAGEN
+// 1. ENDPOINT PARA CREAR REGISTRO PREVIO, SUBIR IMAGEN A PINATA Y GENERAR METADATOS JSON IPFS
 app.post('/api/certificates/prepare', upload.single('image'), async (req, res) => {
   try {
     const {
@@ -626,21 +626,42 @@ app.post('/api/certificates/prepare', upload.single('image'), async (req, res) =
     console.log('POST /api/certificates/prepare - req.file:', req.file ? req.file.filename : null);
 
     const host = req.protocol + '://' + req.get('host');
-    let imageUrl;
+    let localImagePath = null;
+    let imageUrl = null;
+
     if (image_url && typeof image_url === 'string' && image_url.trim() !== '') {
-      // Descargar imagen externa localmente si es necesario para evitar bloqueos CORS y hotlink
       imageUrl = await ensureLocalImage(image_url.trim(), host);
+      if (imageUrl.includes('/uploads/')) {
+        try {
+          const fname = path.basename(new URL(imageUrl, host).pathname);
+          localImagePath = path.join(uploadsDir, fname);
+        } catch (e) {
+          localImagePath = null;
+        }
+      }
     } else if (req.file) {
       const filename = encodeURIComponent(req.file.filename);
       imageUrl = `${host}/uploads/${filename}`;
+      localImagePath = req.file.path;
     } else {
       imageUrl = `${host}/uploads/default.png`;
+      localImagePath = path.join(uploadsDir, 'default.png');
     }
+
+    // Intentar subida de imagen a Pinata IPFS
+    let ipfsImageUrl = null;
+    if (localImagePath && fs.existsSync(localImagePath)) {
+      const originalName = req.file ? req.file.originalname : `cert-image-${Date.now()}.png`;
+      ipfsImageUrl = await uploadImageToIPFS(localImagePath, originalName);
+    }
+
+    // Preferir URL de Pinata IPFS si la subida fue exitosa, o fallback a URL HTTP del servidor
+    const finalImageUrl = ipfsImageUrl || imageUrl;
 
     const [result] = await db.execute(
       `INSERT INTO certificates 
-        (product_name, category, serial_number, manufacturing_year, origin_country, description, image_url, market_value, edition, material, acabado, garantia, peso, attributes) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (product_name, category, serial_number, manufacturing_year, origin_country, description, image_url, market_value, edition, material, acabado, garantia, peso, attributes, ipfs_image_url) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         product_name || null,
         category || null,
@@ -648,23 +669,86 @@ app.post('/api/certificates/prepare', upload.single('image'), async (req, res) =
         manufacturing_year || null,
         origin_country || null,
         description || null,
-        imageUrl,
+        finalImageUrl,
         market_value || null,
         edition || null,
         material || null,
         acabado || null,
         garantia || null,
         peso || null,
-        typeof attributes === 'object' ? JSON.stringify(attributes) : (attributes || null)
+        typeof attributes === 'object' ? JSON.stringify(attributes) : (attributes || null),
+        ipfsImageUrl || null
       ]
     );
 
-    console.log('Inserted certificate id:', result.insertId, 'imageUrl:', imageUrl);
-
     const certId = result.insertId;
-    const metadataUri = `${host}/api/certificates/metadata/${certId}`;
 
-    res.json({ certId, metadataUri, imageUrl });
+    // Construir estructura de metadatos JSON compatible con Metaplex V1
+    const attributesList = [];
+    if (category) attributesList.push({ trait_type: "Categoría", value: String(category) });
+    if (serial_number) attributesList.push({ trait_type: "Número de Serie", value: String(serial_number) });
+    if (manufacturing_year) attributesList.push({ trait_type: "Año de Fabricación", value: String(manufacturing_year) });
+    if (origin_country) attributesList.push({ trait_type: "País de Origen", value: String(origin_country) });
+    if (market_value) attributesList.push({ trait_type: "Valor de Mercado (USD)", value: `$${market_value}` });
+    if (edition) attributesList.push({ trait_type: "Edición / Tiraje", value: String(edition) });
+    if (material) attributesList.push({ trait_type: "Material Principal", value: String(material) });
+    if (acabado) attributesList.push({ trait_type: "Acabado", value: String(acabado) });
+    if (garantia) attributesList.push({ trait_type: "Garantía", value: String(garantia) });
+    if (peso) attributesList.push({ trait_type: "Peso", value: String(peso) });
+
+    if (attributes) {
+      try {
+        const customAttrs = typeof attributes === 'string' ? JSON.parse(attributes) : attributes;
+        if (Array.isArray(customAttrs)) {
+          customAttrs.forEach(attr => {
+            if (attr && attr.trait_type && attr.value !== undefined) {
+              if (!attributesList.some(a => a.trait_type === attr.trait_type)) {
+                attributesList.push(attr);
+              }
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('Error parseando custom attributes:', e);
+      }
+    }
+
+    const metadataJson = {
+      name: product_name || "Certificado de Autenticidad",
+      symbol: "CERT",
+      description: description || "",
+      seller_fee_basis_points: 0,
+      image: finalImageUrl,
+      external_url: "https://certchain.app",
+      attributes: attributesList,
+      properties: {
+        files: [
+          { uri: finalImageUrl, type: "image/png" },
+          { uri: imageUrl, type: "image/png" }
+        ],
+        category: "image",
+        creators: []
+      }
+    };
+
+    // Subir metadatos JSON a Pinata IPFS
+    const ipfsMetadataUrl = await uploadMetadataToIPFS(metadataJson, certId);
+    if (ipfsMetadataUrl) {
+      await db.execute('UPDATE certificates SET ipfs_metadata_url = ? WHERE id = ?', [ipfsMetadataUrl, certId]).catch(() => {});
+    }
+
+    const serverMetadataUri = `${host}/api/certificates/metadata/${certId}`;
+    const primaryMetadataUri = ipfsMetadataUrl || serverMetadataUri;
+
+    console.log(`Certificado ${certId} preparado exitosamente: primaryMetadataUri=${primaryMetadataUri}, ipfsImage=${ipfsImageUrl}`);
+
+    res.json({
+      certId,
+      metadataUri: primaryMetadataUri,
+      ipfsMetadataUri: ipfsMetadataUrl || null,
+      serverMetadataUri,
+      imageUrl: finalImageUrl
+    });
   } catch (error) {
     console.error('Error en /api/certificates/prepare:', error);
     res.status(500).json({ error: error.message });
@@ -953,9 +1037,15 @@ async function ensureDatabaseTables() {
         owner_wallet VARCHAR(255),
         blockchain_tx TEXT,
         asset_id VARCHAR(255),
+        ipfs_image_url TEXT,
+        ipfs_metadata_url TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
+
+    // Migraciones seguras para agregar columnas si la tabla ya existía anteriormente
+    try { await db.execute(`ALTER TABLE certificates ADD COLUMN ipfs_image_url TEXT`); } catch (e) {}
+    try { await db.execute(`ALTER TABLE certificates ADD COLUMN ipfs_metadata_url TEXT`); } catch (e) {}
 
     await db.execute(`
       CREATE TABLE IF NOT EXISTS marketplace_listings (

@@ -5,6 +5,7 @@ import { useUmi } from '../hooks/useUmi'
 import { useMintCertificado } from '../hooks/useMintCertificado'
 import { buildCertificateMetadata, uploadMetadataToStorage, resolveAssetImage, DEFAULT_ASSET_IMAGE } from '../utils/metadata'
 import { crearArbol, mintearCnft } from '../lib/cnft-funciones'
+import { API_BASE_URL } from '../config'
 
 import { TopBar, SectionTitle, HashDisplay, StatCard, Badge } from '../components/Shared'
 import {
@@ -13,9 +14,6 @@ import {
 
 // Merkle Tree pre-desplegado en Solana Devnet para CertChain
 const DEFAULT_MERKLE_TREE_PUBKEY = "3dhSvYubK3XUhE5QdfYTgxJnc3rCdyU5Nt1TcjeC6K6a";
-
-// Backend base URL (use env when available)
-const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || process.env.VITE_BACKEND_URL || 'http://localhost:4000';
 
 function normalizeWalletAddress(value?: string | null): string | null {
   const normalized = String(value ?? '').trim();
@@ -222,39 +220,64 @@ export function CompanyCertify({ user }: { user?: any } = {}) {
     }
 
     try {
-      setLoading(true)
+      setLoading(true);
 
-      // 3. Saltar backend local: usar metadataUri público desde estado (GitHub Raw)
-      setStatusMessage('1/2 Validando metadata pública y minteando cNFT...');
+      // Step 1: Preparar imagen y metadatos JSON en Pinata IPFS via Backend
+      setStatusMessage('1/3 Procesando imagen y generando metadatos en Pinata IPFS...');
+      let finalMetadataUri = metadataUri;
+      let finalImageUrl = images[0] || null;
+      let certId: number | null = null;
 
-      // Validar que la metadata pública en GitHub cumpla la estructura esperada
-      let metadataJson: any = null;
       try {
-        const metaRes = await fetch(metadataUri, { cache: 'no-store' });
-        if (!metaRes.ok) throw new Error('No se pudo obtener metadata desde ' + metadataUri);
-        metadataJson = await metaRes.json();
-      } catch (mErr) {
-        console.warn('Fallo al obtener/parsear metadata.json:', mErr);
-        setUiError('No se pudo leer la metadata pública en: ' + metadataUri + '. Revisa la URL raw de GitHub.');
-        setLoading(false);
-        return;
+        const formData = new FormData();
+        formData.append('product_name', nombre);
+        formData.append('category', categoria);
+        formData.append('serial_number', serie);
+        formData.append('manufacturing_year', anio);
+        formData.append('origin_country', origen);
+        formData.append('description', descripcion);
+        formData.append('market_value', valor);
+        formData.append('edition', edicion);
+        formData.append('material', material);
+        formData.append('acabado', acabado);
+        formData.append('garantia', garantia);
+        formData.append('peso', peso);
+
+        if (selectedFile) {
+          formData.append('image', selectedFile);
+        } else if (images.length > 0 && images[0]) {
+          formData.append('image_url', images[0]);
+        }
+
+        const prepRes = await fetch(`${API_BASE_URL}/api/certificates/prepare`, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (prepRes.ok) {
+          const prepData = await prepRes.json();
+          certId = prepData.certId;
+          finalMetadataUri = prepData.metadataUri || prepData.ipfsMetadataUri || prepData.serverMetadataUri;
+          finalImageUrl = prepData.imageUrl || finalImageUrl;
+          console.log('Certificado preparado exitosamente en Pinata IPFS/Servidor:', prepData);
+        } else {
+          console.warn('El endpoint /prepare falló o no respondió OK, usando URI directa.');
+        }
+      } catch (prepErr) {
+        console.warn('Advertencia al preparar metadatos en backend, usando fallback:', prepErr);
       }
 
-      // Asegurar campos mínimos y usar fallback de formulario
-      const metaName = metadataJson.name || nombre || 'Certificado CertChain';
-      const metaSymbol = metadataJson.symbol || 'CERT';
-      const sellerFee = metadataJson.seller_fee_basis_points || metadataJson.sellerFeeBasisPoints || 0;
-      const metaImage = metadataJson.image || null;
+      // Step 2: Mintear cNFT en Solana Devnet usando la URI de metadatos IPFS
+      setStatusMessage('2/3 Solicitando firma en wallet para mintear cNFT en Solana...');
 
-      // Mintear usando la metadata pública validada
       const mintResult = await mintearCnft(umi, merkleTreeAddr, {
-        name: metaName,
-        symbol: metaSymbol,
-        uri: metadataUri,
-        sellerFeeBasisPoints: sellerFee,
+        name: nombre || 'Certificado CertChain',
+        symbol: 'CERT',
+        uri: finalMetadataUri,
+        sellerFeeBasisPoints: 0,
       });
 
-      // Extraer firma y asset id de la respuesta (varios formatos soportados)
+      // Extraer firma y asset id
       const txSignature =
         mintResult?.signature ||
         mintResult?.txSignature ||
@@ -272,39 +295,51 @@ export function CompanyCertify({ user }: { user?: any } = {}) {
       console.log('Mint tx signature:', txSignature);
       console.log('Minted asset id:', assetId);
 
-      // (Opcional) Guardar resultado en backend local
-      if (txSignature && assetId) {
+      // Step 3: Registrar confirmación en Aiven MySQL via Backend
+      setStatusMessage('3/3 Guardando confirmación inmutable en base de datos...');
+      if (txSignature && (assetId || certId)) {
         try {
-          await fetch(API_BASE_URL + '/api/certificates/create', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              name: nombre,
-              blockchain_tx: txSignature,
-              asset_id: assetId,
-              metadata_url: metadataUri,
-              image_url: metaImage || undefined,
-              owner_wallet: trimmedWalletPropietario,
-            }),
-          });
-          console.log('Registro guardado en backend local (opcional).');
+          if (certId) {
+            await fetch(`${API_BASE_URL}/api/certificates/confirm/${certId}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                blockchain_tx: txSignature,
+                asset_id: assetId,
+                owner_wallet: trimmedWalletPropietario,
+              }),
+            });
+          } else {
+            await fetch(`${API_BASE_URL}/api/certificates/create`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                name: nombre,
+                blockchain_tx: txSignature,
+                asset_id: assetId,
+                metadata_url: finalMetadataUri,
+                image_url: finalImageUrl || undefined,
+                owner_wallet: trimmedWalletPropietario,
+              }),
+            });
+          }
         } catch (saveErr) {
-          console.warn('No se pudo guardar en backend local:', saveErr);
+          console.warn('No se pudo guardar confirmación en backend:', saveErr);
         }
       }
 
       // Actualizar UI con detalles de transacción
       const currentSlot = await connection.getSlot().catch(() => 0);
       setTxDetails({
-        id: `CNFT-${assetId || Math.floor(Math.random() * 9000 + 1000)}`,
-        hash: txSignature,
+        id: `CNFT-${assetId ? shortId(assetId) : Math.floor(Math.random() * 9000 + 1000)}`,
+        hash: txSignature || 'Completado',
         block: currentSlot ? `#${currentSlot.toLocaleString()}` : '#Devnet',
         network: 'Solana Devnet',
         timestamp: new Date().toLocaleString(),
       });
 
     } catch (error: any) {
-      console.error('Error durante el minteo directo:', error);
+      console.error('Error durante la emisión del cNFT:', error);
       setUiError(error?.message || 'Fallo al mintear el cNFT.');
     } finally {
       setLoading(false);
