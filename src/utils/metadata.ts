@@ -37,35 +37,35 @@ export interface MetaplexMetadataJson {
 }
 
 /**
- * Construye el objeto JSON conforme al estándar Metaplex Token Metadata V1.
+ * Construye el objeto JSON conforme al estándar Metaplex Token Metadata V1 para CertChain y Pinata.
  */
 export function buildCertificateMetadata(inputs: CertificateFormInputs): MetaplexMetadataJson {
-  const primaryImage = inputs.images.length > 0 ? inputs.images[0] : 'https://arweave.net/placeholder-certificate-image';
+  const primaryImage = inputs.images && inputs.images.length > 0 ? inputs.images[0] : 'https://gateway.pinata.cloud/ipfs/default-certificate.png';
 
   return {
-    name: inputs.nombre,
+    name: inputs.nombre || 'Certificado de Autenticidad',
     symbol: 'CERT',
-    description: inputs.descripcion,
+    description: inputs.descripcion || 'Certificado digital inmutable de autenticidad emitido en CertChain.',
     image: primaryImage,
     external_url: 'https://certchain.app',
     attributes: [
-      { trait_type: 'Categoría', value: inputs.categoria },
-      { trait_type: 'No. de Serie', value: inputs.serie },
-      { trait_type: 'Año de Fabricación', value: inputs.anio },
-      { trait_type: 'País de Origen', value: inputs.origen },
-      { trait_type: 'Valor de Mercado (USD)', value: inputs.valor },
-      { trait_type: 'Edición', value: inputs.edicion },
-      { trait_type: 'Material Principal', value: inputs.material },
-      { trait_type: 'Acabado', value: inputs.acabado },
-      { trait_type: 'Garantía', value: inputs.garantia },
-      { trait_type: 'Peso', value: inputs.peso },
+      { trait_type: 'Categoría', value: inputs.categoria || 'Joyería' },
+      { trait_type: 'Número de Serie', value: inputs.serie || '-' },
+      { trait_type: 'Año de Fabricación', value: inputs.anio || new Date().getFullYear().toString() },
+      { trait_type: 'País de Origen', value: inputs.origen || 'México' },
+      { trait_type: 'Valor Estimado (USD)', value: inputs.valor || '0' },
+      { trait_type: 'Edición / Tiraje', value: inputs.edicion || 'Pieza Única' },
+      { trait_type: 'Material Principal', value: inputs.material || 'Acero inoxidable 316L' },
+      { trait_type: 'Acabado', value: inputs.acabado || 'Pulido y satinado' },
+      { trait_type: 'Garantía', value: inputs.garantia || '5 años' },
+      { trait_type: 'Peso', value: inputs.peso || '180g' },
     ],
     properties: {
-      files: inputs.images.map(img => ({ uri: img, type: 'image/png' })),
+      files: [{ uri: primaryImage, type: 'image/png' }],
       category: 'image',
       creators: [
         {
-          address: inputs.creatorWallet,
+          address: inputs.creatorWallet || '11111111111111111111111111111111',
           share: 100,
         },
       ],

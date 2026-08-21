@@ -683,13 +683,13 @@ app.post('/api/certificates/prepare', upload.single('image'), async (req, res) =
 
     const certId = result.insertId;
 
-    // Construir estructura de metadatos JSON compatible con Metaplex V1
+    // Construir estructura de metadatos JSON compatible con Metaplex V1 y Pinata
     const attributesList = [];
     if (category) attributesList.push({ trait_type: "Categoría", value: String(category) });
     if (serial_number) attributesList.push({ trait_type: "Número de Serie", value: String(serial_number) });
     if (manufacturing_year) attributesList.push({ trait_type: "Año de Fabricación", value: String(manufacturing_year) });
     if (origin_country) attributesList.push({ trait_type: "País de Origen", value: String(origin_country) });
-    if (market_value) attributesList.push({ trait_type: "Valor de Mercado (USD)", value: `$${market_value}` });
+    if (market_value) attributesList.push({ trait_type: "Valor Estimado (USD)", value: String(market_value) });
     if (edition) attributesList.push({ trait_type: "Edición / Tiraje", value: String(edition) });
     if (material) attributesList.push({ trait_type: "Material Principal", value: String(material) });
     if (acabado) attributesList.push({ trait_type: "Acabado", value: String(acabado) });
@@ -716,18 +716,16 @@ app.post('/api/certificates/prepare', upload.single('image'), async (req, res) =
     const metadataJson = {
       name: product_name || "Certificado de Autenticidad",
       symbol: "CERT",
-      description: description || "",
+      description: description || "Certificado digital inmutable de autenticidad emitido en CertChain.",
       seller_fee_basis_points: 0,
       image: finalImageUrl,
       external_url: "https://certchain.app",
       attributes: attributesList,
       properties: {
         files: [
-          { uri: finalImageUrl, type: "image/png" },
-          { uri: imageUrl, type: "image/png" }
+          { uri: finalImageUrl, type: "image/png" }
         ],
-        category: "image",
-        creators: []
+        category: "image"
       }
     };
 
@@ -837,7 +835,7 @@ app.get('/api/certificates/metadata/:id', async (req, res) => {
     if (cert.serial_number) attributes.push({ trait_type: "Número de Serie", value: String(cert.serial_number) });
     if (cert.manufacturing_year) attributes.push({ trait_type: "Año de Fabricación", value: String(cert.manufacturing_year) });
     if (cert.origin_country) attributes.push({ trait_type: "País de Origen", value: String(cert.origin_country) });
-    if (cert.market_value) attributes.push({ trait_type: "Valor de Mercado (USD)", value: `$${cert.market_value}` });
+    if (cert.market_value) attributes.push({ trait_type: "Valor Estimado (USD)", value: String(cert.market_value) });
     if (cert.edition) attributes.push({ trait_type: "Edición / Tiraje", value: String(cert.edition) });
     if (cert.material) attributes.push({ trait_type: "Material Principal", value: String(cert.material) });
     if (cert.acabado) attributes.push({ trait_type: "Acabado", value: String(cert.acabado) });
@@ -864,19 +862,15 @@ app.get('/api/certificates/metadata/:id', async (req, res) => {
     const metaplexJson = {
       name: cert.product_name || "Certificado de Autenticidad",
       symbol: "CERT",
-      description: cert.description || "",
-      seller_fee_basis_points: 0,
-      image: finalImage,
-      animation_url: "",
+      description: cert.description || "Certificado digital inmutable de autenticidad emitido en CertChain.",
+      image: cert.ipfs_image_url || finalImage,
       external_url: "https://certchain.app",
       attributes,
       properties: {
         files: [
-          { uri: finalImage, type: fileType },
-          { uri: imageUri, type: fileType }
+          { uri: cert.ipfs_image_url || finalImage, type: fileType }
         ],
-        category: "image",
-        creators: []
+        category: "image"
       }
     };
 

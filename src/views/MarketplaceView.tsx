@@ -15,12 +15,8 @@ function shortAssetId(id: string) {
 }
 
 function getImageFromAsset(asset: DasAsset) {
-  if (!asset || !asset.content) return null
-  const content = asset.content
-  if (content.links && content.links.image) return content.links.image
-  if (content.files && Array.isArray(content.files) && content.files.length > 0) return content.files[0].uri
-  if (content.image) return content.image
-  return null
+  if (!asset) return DEFAULT_ASSET_IMAGE;
+  return resolveAssetImage(asset) || DEFAULT_ASSET_IMAGE;
 }
 
 export default function MarketplaceView(): JSX.Element {

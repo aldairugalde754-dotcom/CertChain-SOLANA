@@ -127,9 +127,9 @@ export function CompanyCertify({ user }: { user?: any } = {}) {
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [uiError, setUiError] = useState<string | null>(null)
   const [txDetails, setTxDetails] = useState<any>(null)
-  // URI pública raw de GitHub para metadata (Metaplex V1). Cambia USER/REPO según corresponda.
+  // URI de metadatos IPFS / Pinata (generada dinámicamente o editable)
   const [metadataUri, setMetadataUri] = useState<string>(
-    'https://raw.githubusercontent.com/aldairugalde754-dotcom/metadata/refs/heads/main/Ring1'
+    'https://gateway.pinata.cloud/ipfs/'
   );
   const fileRef = useRef<HTMLInputElement>(null)
 

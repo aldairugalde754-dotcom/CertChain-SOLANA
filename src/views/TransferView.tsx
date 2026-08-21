@@ -7,6 +7,8 @@ import { publicKey as umiPublicKey } from '@metaplex-foundation/umi'
 import { TopBar, Badge, MOCK_PRODUCTS, SectionTitle } from '../components/Shared'
 import { API_BASE_URL } from '../config'
 
+import { resolveAssetImage, DEFAULT_ASSET_IMAGE } from '../utils/metadata'
+
 type DasAsset = any
 
 const RPC_URL = process.env.REACT_APP_DAS_RPC || process.env.VITE_DAS_RPC || 'https://devnet.helius-rpc.com/?api-key=568c37da-25db-4b18-b55c-143df09820c1'
@@ -19,12 +21,8 @@ function shortAssetId(id: string) {
 }
 
 function getImageFromAsset(asset: DasAsset) {
-  if (!asset || !asset.content) return null
-  const content = asset.content
-  if (content.links && content.links.image) return content.links.image
-  if (content.files && Array.isArray(content.files) && content.files.length > 0) return content.files[0].uri
-  if (content.image) return content.image
-  return null
+  if (!asset) return DEFAULT_ASSET_IMAGE;
+  return resolveAssetImage(asset) || DEFAULT_ASSET_IMAGE;
 }
 
 export default function TransferView(): JSX.Element {
@@ -354,7 +352,7 @@ export default function TransferView(): JSX.Element {
                     <div style={{ fontFamily: 'Rajdhani', fontSize: 16, fontWeight: 700 }}>{selectedCert.content?.metadata?.name || selectedCert.name}</div>
                     <div style={{ marginTop: 8, fontFamily: 'JetBrains Mono', fontSize: 12, color: '#8a93b8' }}>ID: {shortAssetId(selectedCert.id || selectedCert.cert || '')}</div>
                     <div style={{ marginTop: 8, fontFamily: 'JetBrains Mono', fontSize: 12, color: '#8a93b8' }}>Categoría: {selectedCert.content?.metadata?.attributes?.find((x:any)=>x.trait_type==='Categoría')?.value || '-'}</div>
-                    <div style={{ marginTop: 8, fontFamily: 'JetBrains Mono', fontSize: 12, color: '#8a93b8' }}>Valor: ${selectedCert.content?.metadata?.attributes?.find((x:any)=>x.trait_type==='Valor estimado (USD)')?.value || '-'}</div>
+                    <div style={{ marginTop: 8, fontFamily: 'JetBrains Mono', fontSize: 12, color: '#8a93b8' }}>Valor: ${selectedCert.content?.metadata?.attributes?.find((x:any)=> ['Valor Estimado (USD)', 'Valor estimado (USD)', 'Valor de Mercado (USD)', 'Valor'].includes(x.trait_type))?.value || '-'}</div>
                     <div style={{ marginTop: 12 }}><Badge color="#22c55e">EN CARTERA</Badge></div>
                   </div>
                 </div>
