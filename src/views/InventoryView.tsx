@@ -250,7 +250,7 @@ export default function InventoryView(): JSX.Element {
   }, [publicKey, RPC_URL])
 
   const total = assets.length
-  const inWallet = assets.length
+  const inWallet = assets.filter(a => !listedAssetIds.has(String(a.id || a.assetId)) && !auctionAssetIds.has(String(a.id || a.assetId))).length
   const inMarketplace = assets.filter(a => listedAssetIds.has(String(a.id || a.assetId))).length
   const inAuction = assets.filter(a => auctionAssetIds.has(String(a.id || a.assetId))).length
 
@@ -329,7 +329,7 @@ export default function InventoryView(): JSX.Element {
       <div style={{ padding: '28px 32px' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 14, marginBottom: 24 }}>
           <StatCard label="Total cNFTs" value={String(total)} icon={Icons.Total} color="#00c8ff" />
-          <StatCard label="En cartera" value={String(inWallet)} icon={Icons.Wallet} color="#22c55e" />
+          <StatCard label="En Wallet" value={String(inWallet)} icon={Icons.Wallet} color="#22c55e" />
           <StatCard label="En marketplace" value={String(inMarketplace)} icon={Icons.Marketplace} color="#7c3aed" />
           <StatCard label="En subasta" value={String(inAuction)} icon={Icons.Auction} color="#f59e0b" />
         </div>

@@ -19,7 +19,24 @@ vi.mock('@solana/wallet-adapter-react-ui', () => ({
 }))
 
 vi.mock('./hooks/useUmi', () => ({
-  useUmi: () => ({ identity: { publicKey: 'identity-key' } }),
+  useUmi: () => ({ identity: { publicKey: { toString: () => 'wallet-test-123' } } }),
+}))
+
+const mockBubblegumTransfer = vi.fn(() => ({
+  sendAndConfirm: vi.fn(async () => ({ signature: 'transfer-tx-signature' })),
+}))
+
+vi.mock('@metaplex-foundation/mpl-bubblegum', () => ({
+  getAssetWithProof: vi.fn(async () => ({
+    merkleTree: { toString: () => 'tree-address' },
+    root: 'root-hash',
+    dataHash: 'data-hash',
+    creatorHash: 'creator-hash',
+    nonce: 1,
+    index: 1,
+    proof: [],
+  })),
+  transfer: (...args: any[]) => mockBubblegumTransfer(...args),
 }))
 
 vi.mock('./hooks/useMintCertificado', () => ({
@@ -96,6 +113,50 @@ describe('ClientMarketplace cart flow', () => {
     render(<ClientTransfer user={{}} />)
 
     expect(await screen.findByText(/no tienes certificados cNFT/i)).toBeInTheDocument()
+  })
+
+  it('sends a transfer transaction record to the backend when transferring a certificate', async () => {
+    mockFetch.mockReset()
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result: { assets: [{
+            id: 'asset-transfer-1',
+            compression: { compressed: true },
+            burnt: false,
+            content: {
+              metadata: {
+                name: 'Certificado demo',
+                symbol: 'CERT',
+                attributes: [{ trait_type: 'Tipo', value: 'Certificado' }],
+              },
+              links: { image: '' },
+              files: [],
+            },
+          }] },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true }),
+      })
+
+    render(<ClientTransfer user={{}} />)
+
+    const assetName = await screen.findByText(/certificado demo/i)
+    fireEvent.click(assetName)
+    fireEvent.change(screen.getByPlaceholderText(/0x742d35Cc6634C0532925a3b8D4C9.../i), {
+      target: { value: '11111111111111111111111111111111' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /confirmar transferencia/i }))
+
+    await vi.waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/certificates/transfer'),
+        expect.objectContaining({ method: 'POST' })
+      )
+    })
   })
 
   it('shows the auction price and status for assets without metadata price', async () => {

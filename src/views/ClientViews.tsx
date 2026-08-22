@@ -1,11 +1,38 @@
 import { useState, useEffect } from 'react'
 import { useWallet } from '@solana/wallet-adapter-react'
+import { PublicKey } from '@solana/web3.js'
 import { Search, ShoppingCart, Heart, TrendingUp, ArrowUpRight, Package, Send, AlertCircle, CheckCircle2, Zap } from 'lucide-react'
+import { getAssetWithProof, transfer as bubblegumTransfer } from '@metaplex-foundation/mpl-bubblegum'
+import { publicKey as umiPublicKey } from '@metaplex-foundation/umi'
 import { TopBar, StatCard, SectionTitle, Badge, HashDisplay, MOCK_PRODUCTS, MOCK_AUCTIONS } from '../components/Shared'
 import { resolveAssetImage, DEFAULT_ASSET_IMAGE } from '../utils/metadata'
 import { API_BASE_URL, DAS_RPC_URL, DEFAULT_MERKLE_TREE_PUBKEY } from '../config'
 import { useMarketplaceCheckout } from '../hooks/useMarketplaceCheckout'
+import { useUmi } from '../hooks/useUmi'
 import { subscribeToDataRefresh, triggerDataRefresh } from '../utils/dataRefresh'
+
+async function sendBubblegumTransferWithRetry(umi: any, transferInput: any) {
+  const attempts = 3
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await bubblegumTransfer(umi, transferInput).sendAndConfirm(umi, { commitment: 'confirmed' })
+    } catch (txErr: any) {
+      const message = txErr?.message || String(txErr)
+      const logs = typeof txErr.getLogs === 'function' ? await txErr.getLogs().catch(() => []) : []
+      const joined = Array.isArray(logs) ? logs.join('\n') : String(logs)
+
+      const isBlockhashIssue = message.includes('Blockhash not found') || joined.includes('Blockhash not found') || message.includes('blockhash')
+      if (isBlockhashIssue && attempt < attempts - 1) {
+        continue
+      }
+
+      throw txErr
+    }
+  }
+
+  throw new Error('No se pudo enviar la transferencia después de reintentar por blockhash expirado.')
+}
 
 // ─── MARKETPLACE ─────────────────────────────────────────────────────────────
 
@@ -1207,6 +1234,7 @@ export function ClientWallet() {
 
 export function ClientTransfer() {
   const { publicKey } = useWallet()
+  const umi = useUmi()
   const [mode, setMode] = useState<'transfer' | 'sell'>('transfer')
   const [assets, setAssets] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
@@ -1335,6 +1363,50 @@ export function ClientTransfer() {
     setProcessing(true)
 
     try {
+      if (mode === 'transfer') {
+        const destinationPubkey = new PublicKey(destination.trim())
+        const assetId = String(selectedAsset.id || selectedAsset.assetId || selectedAsset.mint || '')
+        if (!assetId) {
+          throw new Error('No se pudo resolver el asset_id del certificado para la transferencia.')
+        }
+
+        const assetWithProof = await getAssetWithProof(umi, assetId, { truncateCanopy: true })
+        const currentOwner = umi.identity?.publicKey ?? publicKey
+        const merkleTreePubkey = String(assetWithProof.merkleTree?.toString?.() || DEFAULT_MERKLE_TREE_PUBKEY)
+
+        const txBuilder = await sendBubblegumTransferWithRetry(umi, {
+          leafOwner: currentOwner,
+          leafDelegate: currentOwner,
+          newLeafOwner: umiPublicKey(destinationPubkey.toString()),
+          merkleTree: umiPublicKey(merkleTreePubkey),
+          root: assetWithProof.root,
+          dataHash: assetWithProof.dataHash,
+          creatorHash: assetWithProof.creatorHash,
+          nonce: assetWithProof.nonce,
+          index: assetWithProof.index,
+          proof: assetWithProof.proof,
+        })
+
+        const signature = txBuilder?.signature || txBuilder
+
+        await fetch(`${API_BASE_URL}/api/certificates/transfer`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            asset_id: assetId,
+            previous_owner: publicKey.toString(),
+            new_owner: destinationPubkey.toString(),
+            transfer_type: 'transfer',
+            tx_hash: signature,
+            note: note || null,
+          }),
+        }).catch((err: any) => console.warn('No se pudo notificar al backend la transferencia:', err))
+
+        triggerDataRefresh('inventory')
+        triggerDataRefresh('marketplace')
+        triggerDataRefresh('auctions')
+      }
+
       if (mode === 'sell') {
         const res = await fetch(`${API_BASE_URL}/api/marketplace/list`, {
           method: 'POST',
