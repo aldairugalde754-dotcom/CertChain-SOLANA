@@ -2,6 +2,7 @@ import React, { JSX, useEffect, useState } from 'react'
 import { useWallet } from '@solana/wallet-adapter-react'
 import { TopBar, SectionTitle, StatCard, Badge } from '../components/Shared'
 import { API_BASE_URL } from '../config'
+import { subscribeToDataRefresh } from '../utils/dataRefresh'
 
 type DasAsset = any
 
@@ -237,9 +238,14 @@ export default function InventoryView(): JSX.Element {
 
     fetchAssets()
 
+    const off = subscribeToDataRefresh(() => {
+      fetchAssets()
+    }, ['all', 'inventory', 'marketplace', 'auctions'])
+
     return () => {
       aborted = true
       controller.abort()
+      off()
     }
   }, [publicKey, RPC_URL])
 

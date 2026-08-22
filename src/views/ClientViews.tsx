@@ -5,6 +5,7 @@ import { TopBar, StatCard, SectionTitle, Badge, HashDisplay, MOCK_PRODUCTS, MOCK
 import { resolveAssetImage, DEFAULT_ASSET_IMAGE } from '../utils/metadata'
 import { API_BASE_URL, DAS_RPC_URL, DEFAULT_MERKLE_TREE_PUBKEY } from '../config'
 import { useMarketplaceCheckout } from '../hooks/useMarketplaceCheckout'
+import { subscribeToDataRefresh, triggerDataRefresh } from '../utils/dataRefresh'
 
 // ─── MARKETPLACE ─────────────────────────────────────────────────────────────
 
@@ -56,7 +57,10 @@ export function ClientMarketplace() {
     }
 
     loadListings()
-    return () => { mounted = false }
+    const off = subscribeToDataRefresh(() => {
+      loadListings()
+    }, ['all', 'marketplace'])
+    return () => { mounted = false; off() }
   }, [])
 
   const addToCart = (product: any) => {
@@ -97,6 +101,8 @@ export function ClientMarketplace() {
         const purchasedIds = new Set(cartItems.map(item => item.id))
         setProducts(prev => prev.filter(product => !purchasedIds.has(product.id)))
         setCart({})
+        triggerDataRefresh('marketplace')
+        triggerDataRefresh('inventory')
         setCheckoutState('success')
         setCheckoutMessage('¡Compra completada! Los certificados han sido transferidos a tu wallet.')
         setTimeout(() => setCartOpen(false), 2000)
@@ -1348,6 +1354,9 @@ export function ClientTransfer() {
         if (!res.ok) {
           throw new Error(payload?.error || 'No se pudo listar el certificado.')
         }
+
+        triggerDataRefresh('marketplace')
+        triggerDataRefresh('inventory')
       }
 
       setSubmitted(true)

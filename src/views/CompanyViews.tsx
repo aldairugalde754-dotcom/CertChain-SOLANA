@@ -6,6 +6,7 @@ import { useMintCertificado } from '../hooks/useMintCertificado'
 import { buildCertificateMetadata, uploadMetadataToStorage, resolveAssetImage, DEFAULT_ASSET_IMAGE } from '../utils/metadata'
 import { crearArbol, mintearCnft } from '../lib/cnft-funciones'
 import { API_BASE_URL } from '../config'
+import { subscribeToDataRefresh, triggerDataRefresh } from '../utils/dataRefresh'
 
 import { TopBar, SectionTitle, HashDisplay, StatCard, Badge } from '../components/Shared'
 import {
@@ -703,18 +704,20 @@ export function CompanyAuctionDash() {
   useEffect(() => {
     if (!publicKey) return
 
-    fetch(`${API_BASE_URL}/api/marketplace/listings`)
-      .then(r => r.ok ? r.json() : [])
-      .then((rows: any[]) => {
+    const loadCompanyData = async () => {
+      try {
+        const rows = await fetch(`${API_BASE_URL}/api/marketplace/listings`).then(r => r.ok ? r.json() : []).catch(() => [])
         const ids = new Set((Array.isArray(rows) ? rows : []).map((row: any) => String(row.asset_id || row.id || '')).filter(Boolean))
         setMarketplaceIds(ids)
-      })
-      .catch(() => setMarketplaceIds(new Set()))
+      } catch {
+        setMarketplaceIds(new Set())
+      }
 
-    const payload = { jsonrpc: '2.0', id: 'company-owner-assets', method: 'getAssetsByOwner', params: { ownerAddress: publicKey.toString(), page: 1, limit: 1000 } }
-    fetch(RPC_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-      .then(r => r.ok ? r.json() : Promise.reject(r.status))
-      .then(json => {
+      try {
+        const payload = { jsonrpc: '2.0', id: 'company-owner-assets', method: 'getAssetsByOwner', params: { ownerAddress: publicKey.toString(), page: 1, limit: 1000 } }
+        const res = await fetch(RPC_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+        if (!res.ok) throw new Error(`RPC error ${res.status}`)
+        const json = await res.json()
         const candidates = json.result?.assets || json.result?.items || json.result || json.assets || []
         const rawAssets = Array.isArray(candidates) ? candidates : (Array.isArray(json.result?.data) ? json.result.data : [])
         const compressed = rawAssets.filter((a: any) => a?.compression?.compressed === true && (a?.burnt === false || a?.burnt === undefined))
@@ -728,9 +731,20 @@ export function CompanyAuctionDash() {
           return Array.isArray(attrs) && attrs.some((t: any) => String(t.value || t.trait_value || '').toLowerCase().includes('certchain'));
         })
         setOwnedCerts(filtered)
-      }).catch(e => { console.error('Error loading owner certs from DAS', e); setOwnedCerts([]) })
+      } catch (e) {
+        console.error('Error loading owner certs from DAS', e)
+        setOwnedCerts([])
+      }
 
-    refreshAuctions()
+      await refreshAuctions()
+    }
+
+    loadCompanyData()
+
+    const off = subscribeToDataRefresh(() => {
+      loadCompanyData()
+    }, ['all', 'inventory', 'marketplace', 'auctions'])
+    return () => off()
   }, [publicKey])
 
   const handleCreateAuction = async (e: React.FormEvent) => {
@@ -787,6 +801,8 @@ export function CompanyAuctionDash() {
       setEndTime('');
       setAuctionDesc('');
       setAuctionTitle('');
+      triggerDataRefresh('auctions')
+      triggerDataRefresh('inventory')
       await refreshAuctions();
     } catch (err: any) {
       console.error(err);
@@ -799,6 +815,8 @@ export function CompanyAuctionDash() {
     try {
       const res = await fetch(`${API_BASE_URL}/api/auctions/list/${encodeURIComponent(assetId)}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Error eliminando');
+      triggerDataRefresh('auctions')
+      triggerDataRefresh('inventory')
       refreshAuctions();
     } catch (err: any) {
       console.error('Error deleting auction', err);
@@ -1027,12 +1045,20 @@ export function CompanyMarketDash() {
 
   useEffect(() => {
     if (!publicKey) return
-    setLoading(true)
-    fetch(`${API_BASE_URL}/api/marketplace/seller/${publicKey.toString()}`).then(r => r.ok ? r.json() : Promise.reject(r.status)).then(json => {
-      setListings(Array.isArray(json) ? json : [])
-    }).catch(e => { console.error('Error loading listings', e); setError(String(e)) }).finally(() => setLoading(false))
-    // fetch stats for KPI cards
-    fetch(`${API_BASE_URL}/api/marketplace/stats`).then(r => r.ok ? r.json() : Promise.resolve(null)).then(json => setStats(json)).catch(e => console.warn('Error fetching marketplace stats', e))
+
+    const loadListings = () => {
+      setLoading(true)
+      fetch(`${API_BASE_URL}/api/marketplace/seller/${publicKey.toString()}`).then(r => r.ok ? r.json() : Promise.reject(r.status)).then(json => {
+        setListings(Array.isArray(json) ? json : [])
+      }).catch(e => { console.error('Error loading listings', e); setError(String(e)) }).finally(() => setLoading(false))
+      fetch(`${API_BASE_URL}/api/marketplace/stats`).then(r => r.ok ? r.json() : Promise.resolve(null)).then(json => setStats(json)).catch(e => console.warn('Error fetching marketplace stats', e))
+    }
+
+    loadListings()
+    const off = subscribeToDataRefresh(() => {
+      loadListings()
+    }, ['all', 'marketplace'])
+    return () => off()
   }, [publicKey])
 
   const handleDelete = async (assetId: string) => {
@@ -1040,6 +1066,8 @@ export function CompanyMarketDash() {
     try {
       const res = await fetch(`${API_BASE_URL}/api/marketplace/list/${encodeURIComponent(assetId)}`, { method: 'DELETE' })
       if (!res.ok) throw new Error('Error eliminando')
+      triggerDataRefresh('marketplace')
+      triggerDataRefresh('inventory')
       setListings(prev => prev.filter(l => l.asset_id !== assetId))
     } catch (e: any) {
       console.error(e); alert('Error eliminando: ' + (e.message || e))
@@ -1088,7 +1116,8 @@ export function CompanyMarketDash() {
                     // refresh seller listings
                     setShowAdd(false)
                     setSelectedToList(null); setPriceToList(''); setDescToList(''); setCatToList('General')
-                    // reload listings
+                    triggerDataRefresh('marketplace')
+                    triggerDataRefresh('inventory')
                     setLoading(true)
                     fetch(`${API_BASE_URL}/api/marketplace/seller/${publicKey.toString()}`).then(r => r.ok ? r.json() : []).then(json => setListings(Array.isArray(json) ? json : [])).catch(e => console.error('Error reloading listings', e)).finally(() => setLoading(false))
                   } catch (err:any) { console.error('Error publicando listing', err); alert(err.message || String(err)) }
@@ -1138,7 +1167,8 @@ export function CompanyMarketDash() {
                     }
                     setShowEdit(false)
                     setEditListing(null)
-                    // refresh listings
+                    triggerDataRefresh('marketplace')
+                    triggerDataRefresh('inventory')
                     setLoading(true)
                     fetch(`${API_BASE_URL}/api/marketplace/seller/${publicKey.toString()}`).then(r => r.ok ? r.json() : []).then(json => setListings(Array.isArray(json) ? json : [])).catch(e => console.error('Error reloading listings', e)).finally(() => setLoading(false))
                   } catch (err:any) { console.error('Error actualizando listing', err); alert(err.message || String(err)) }

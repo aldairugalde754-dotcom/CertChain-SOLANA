@@ -8,6 +8,7 @@ import { TopBar, Badge, MOCK_PRODUCTS, SectionTitle } from '../components/Shared
 import { API_BASE_URL } from '../config'
 
 import { resolveAssetImage, DEFAULT_ASSET_IMAGE } from '../utils/metadata'
+import { triggerDataRefresh } from '../utils/dataRefresh'
 
 type DasAsset = any
 
@@ -58,9 +59,12 @@ export default function TransferView(): JSX.Element {
 
   const [selectedCert, setSelectedCert] = useState<DasAsset | null>(null)
   const [destination, setDestination] = useState('')
-  const [transferType, setTransferType] = useState<'sale' | 'transfer' | 'guarantee' | 'donation'>('transfer')
+  const [transferType, setTransferType] = useState<'transfer' | 'guarantee' | 'donation'>('transfer')
   const [priceSol, setPriceSol] = useState('')
   const [processing, setProcessing] = useState(false)
+  const [listedAssetIds, setListedAssetIds] = useState<Set<string>>(new Set())
+  const [auctionAssetIds, setAuctionAssetIds] = useState<Set<string>>(new Set())
+  const [successTx, setSuccessTx] = useState<{ hash: string; type: string } | null>(null)
 
   useEffect(() => {
     let aborted = false
@@ -111,6 +115,26 @@ export default function TransferView(): JSX.Element {
         })
 
         if (!aborted) setAssets(filtered)
+
+        try {
+          fetch(`${API_BASE_URL}/api/marketplace/listings`).then(r => r.ok ? r.json() : Promise.resolve([])).then((list: any[]) => {
+            if (!aborted && Array.isArray(list)) {
+              setListedAssetIds(new Set(list.map((item: any) => String(item.asset_id || item.assetId || ''))))
+            }
+          }).catch(() => undefined)
+        } catch {
+          // ignore
+        }
+
+        try {
+          fetch(`${API_BASE_URL}/api/auctions/listings`).then(r => r.ok ? r.json() : Promise.resolve([])).then((list: any[]) => {
+            if (!aborted && Array.isArray(list)) {
+              setAuctionAssetIds(new Set(list.map((item: any) => String(item.asset_id || item.assetId || ''))))
+            }
+          }).catch(() => undefined)
+        } catch {
+          // ignore
+        }
       } catch (err: any) {
         if (err.name === 'AbortError') return
         console.error('Error fetching assets', err)
@@ -124,13 +148,30 @@ export default function TransferView(): JSX.Element {
     return () => { aborted = true; controller.abort() }
   }, [publicKey])
 
+  const transferableAssets = assets.filter((asset: any) => {
+    const assetId = String(asset.id || asset.assetId || '')
+    return !listedAssetIds.has(assetId) && !auctionAssetIds.has(assetId)
+  })
+
   const handleSelect = (asset: DasAsset) => {
+    const assetId = String(asset.id || asset.assetId || '')
+    if (listedAssetIds.has(assetId) || auctionAssetIds.has(assetId)) {
+      setError('Este certificado ya está en marketplace o en subasta y no puede transferirse desde wallet.')
+      setSelectedCert(null)
+      return
+    }
+    setError(null)
     setSelectedCert(asset)
   }
 
   const handleTransfer = async () => {
     setError(null)
     if (!selectedCert) { setError('Selecciona un certificado.'); return }
+    const assetId = String(selectedCert.id || selectedCert.assetId || '')
+    if (listedAssetIds.has(assetId) || auctionAssetIds.has(assetId)) {
+      setError('Este certificado ya está en marketplace o en subasta y no puede transferirse desde wallet.')
+      return
+    }
     if (!destination) { setError('Ingresa la wallet destino.'); return }
     if (!publicKey) { setError('Conecta tu wallet.'); return }
 
@@ -140,12 +181,6 @@ export default function TransferView(): JSX.Element {
       destPub = new PublicKey(destination)
     } catch (e) {
       setError('La dirección destino no es una PublicKey válida de Solana.');
-      return
-    }
-
-    // For sale flow: require price
-    if (transferType === 'sale' && (!priceSol || Number(priceSol) <= 0)) {
-      setError('Ingresa un precio de venta válido en SOL.');
       return
     }
 
@@ -217,7 +252,14 @@ export default function TransferView(): JSX.Element {
         console.warn('No se pudo notificar al backend:', err)
       }
 
-      alert('Transferencia enviada. Ver en Explorer: https://explorer.solana.com/tx/' + signature + '?cluster=devnet')
+      triggerDataRefresh('inventory')
+      triggerDataRefresh('marketplace')
+      triggerDataRefresh('auctions')
+
+      setSuccessTx({
+        hash: signature,
+        type: transferType,
+      })
       // reset
       setSelectedCert(null)
       setDestination('')
@@ -237,6 +279,21 @@ export default function TransferView(): JSX.Element {
   return (
     <div style={{ flex: 1, overflow: 'auto' }}>
       <TopBar title="Transferir Certificado" subtitle="Selecciona el certificado a transferir" />
+      {successTx && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }} onClick={() => setSuccessTx(null)}>
+          <div role="dialog" aria-modal="true" onClick={e => e.stopPropagation()} style={{ width: 420, maxWidth: '90%', background: '#071023', border: '1px solid rgba(34,197,94,0.4)', borderRadius: 16, padding: 24, boxShadow: '0 20px 50px rgba(0,0,0,0.45)' }}>
+            <div style={{ fontFamily: 'Rajdhani', fontSize: 24, fontWeight: 700, color: '#e6eef8', marginBottom: 8 }}>Transferencia completada</div>
+            <div style={{ color: '#b7c5db', marginBottom: 18 }}>La operación tipo <strong>{successTx.type}</strong> se envió correctamente.</div>
+            <div style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: '#9fe8c9', marginBottom: 20, wordBreak: 'break-all' }}>{successTx.hash}</div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button type="button" className="btn-ghost" onClick={() => setSuccessTx(null)}>Cerrar</button>
+              <a href={`https://explorer.solana.com/tx/${successTx.hash}?cluster=devnet`} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
+                <button type="button" className="btn-accent">Ver en Explorer</button>
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{ padding: '28px 32px' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 420px', gap: 24 }}>
           <div>
@@ -248,7 +305,7 @@ export default function TransferView(): JSX.Element {
                   <div>Cargando certificados...</div>
                 ) : showItems ? (
                   <div style={{ display: 'grid', gap: 10 }}>
-                    {(assets.length > 0 ? assets : MOCK_PRODUCTS.slice(0,5)).map((a: any) => (
+                    {(transferableAssets.length > 0 ? transferableAssets : MOCK_PRODUCTS.slice(0,5)).map((a: any) => (
                       <div key={a.id} onClick={() => handleSelect(a)} style={{ display: 'flex', gap: 12, padding: 12, borderRadius: 10, cursor: 'pointer', background: selectedCert?.id === a.id ? 'rgba(124,58,237,0.08)' : 'rgba(124,58,237,0.03)', border: selectedCert?.id === a.id ? '1px solid rgba(124,58,237,0.18)' : '1px solid rgba(124,58,237,0.06)' }}>
                         <img src={getImageFromAsset(a) || (a.image || '')} alt="" style={{ width: 56, height: 56, borderRadius: 8, objectFit: 'cover' }} />
                         <div style={{ flex: 1 }}>
@@ -270,20 +327,12 @@ export default function TransferView(): JSX.Element {
 
               <div style={{ marginTop: 12 }}>
                 <label style={{ display: 'block', fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485', textTransform: 'uppercase', marginBottom: 6 }}>Motivo de la transferencia</label>
-                <select className="input-base" value={transferType} onChange={e => setTransferType(e.target.value as any)}>
+                <select className="input-base" value={transferType} onChange={e => setTransferType(e.target.value as 'transfer' | 'guarantee' | 'donation')}>
                   <option value="transfer">Transferencia interna</option>
-                  <option value="sale">Venta directa</option>
                   <option value="guarantee">Garantía / Devolución</option>
                   <option value="donation">Donación</option>
                 </select>
               </div>
-
-              {transferType === 'sale' && (
-                <div style={{ marginTop: 12 }}>
-                  <label style={{ display: 'block', fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485', textTransform: 'uppercase', marginBottom: 6 }}>Precio de Venta (SOL)</label>
-                  <input className="input-base" value={priceSol} onChange={e => setPriceSol(e.target.value)} placeholder="0.5" />
-                </div>
-              )}
 
               {error && <div style={{ marginTop: 12, color: 'salmon' }}>{error}</div>}
 
