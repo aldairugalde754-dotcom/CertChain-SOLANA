@@ -33,6 +33,23 @@ function getAttributeValue(asset: DasAsset, keyNames: string[]) {
   }
 }
 
+function parsePriceValue(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string') {
+    const normalized = value.replace(/[$,\s]/g, '').replace(/[^0-9.\-]/g, '')
+    if (!normalized || normalized === '-' || normalized === '--') return null
+    const num = Number(normalized)
+    return Number.isFinite(num) ? num : null
+  }
+  return null
+}
+
+function formatPrice(value: number | null): string {
+  if (value === null || Number.isNaN(value)) return '—'
+  return `$${Number(value).toLocaleString('en-US', { maximumFractionDigits: 2 })}`
+}
+
 // Iconos vectoriales para la interfaz
 const Icons = {
   Total: (
@@ -95,6 +112,9 @@ export default function InventoryView(): JSX.Element {
   const [loading, setLoading] = useState(false)
   const [assets, setAssets] = useState<DasAsset[]>([])
   const [listedAssetIds, setListedAssetIds] = useState<Set<string>>(new Set())
+  const [listedAssetPrices, setListedAssetPrices] = useState<Record<string, number>>({})
+  const [auctionAssetIds, setAuctionAssetIds] = useState<Set<string>>(new Set())
+  const [auctionAssetPrices, setAuctionAssetPrices] = useState<Record<string, number>>({})
   const [error, setError] = useState<string | null>(null)
 
   const RPC_URL = process.env.REACT_APP_DAS_RPC || process.env.VITE_DAS_RPC || 'https://devnet.helius-rpc.com/?api-key=568c37da-25db-4b18-b55c-143df09820c1'
@@ -166,14 +186,43 @@ export default function InventoryView(): JSX.Element {
         })
 
         if (!aborted) setAssets(filteredCertificates)
-        // fetch marketplace listings to determine which assets are listed
+
         try {
           fetch(`${API_BASE_URL}/api/marketplace/listings`).then(r => r.ok ? r.json() : Promise.resolve([])).then((list: any[]) => {
             if (!aborted && Array.isArray(list)) {
-              const s = new Set(list.map(l => String(l.asset_id)));
+              const s = new Set<string>()
+              const prices: Record<string, number> = {}
+              list.forEach((l: any) => {
+                const assetId = String(l.asset_id || l.assetId || '')
+                if (!assetId) return
+                s.add(assetId)
+                const value = parsePriceValue(l.price_usd ?? l.price ?? l.amount)
+                if (value !== null) prices[assetId] = value
+              })
               setListedAssetIds(s)
+              setListedAssetPrices(prices)
             }
-          }).catch(e => { /* ignore */ })
+          }).catch(() => { /* ignore */ })
+        } catch (e) {
+          // ignore
+        }
+
+        try {
+          fetch(`${API_BASE_URL}/api/auctions/listings`).then(r => r.ok ? r.json() : Promise.resolve([])).then((list: any[]) => {
+            if (!aborted && Array.isArray(list)) {
+              const s = new Set<string>()
+              const prices: Record<string, number> = {}
+              list.forEach((l: any) => {
+                const assetId = String(l.asset_id || l.assetId || '')
+                if (!assetId) return
+                s.add(assetId)
+                const value = parsePriceValue(l.current_bid ?? l.currentBid ?? l.starting_price ?? l.startingPrice ?? l.reserve_price ?? l.reservePrice)
+                if (value !== null) prices[assetId] = value
+              })
+              setAuctionAssetIds(s)
+              setAuctionAssetPrices(prices)
+            }
+          }).catch(() => { /* ignore */ })
         } catch (e) {
           // ignore
         }
@@ -197,7 +246,7 @@ export default function InventoryView(): JSX.Element {
   const total = assets.length
   const inWallet = assets.length
   const inMarketplace = assets.filter(a => listedAssetIds.has(String(a.id || a.assetId))).length
-  const inAuction = 0
+  const inAuction = assets.filter(a => auctionAssetIds.has(String(a.id || a.assetId))).length
 
   const [qrOpen, setQrOpen] = useState(false)
   const [qrAsset, setQrAsset] = useState<DasAsset | null>(null)
@@ -310,10 +359,16 @@ export default function InventoryView(): JSX.Element {
                       const image = getImageFromAsset(a) || ''
                       const name = a.content?.metadata?.name || a.content?.metadata?.title || 'Sin nombre'
                       const category = getAttributeValue(a, ['Categoría', 'categoria', 'Category']) || 'General'
-                      const valor = getAttributeValue(a, ['Valor estimado (USD)', 'Valor']) || '-'
-                      const assetShort = shortAssetId(a.id || a.assetId || '')
-                      const isListed = listedAssetIds.has(String(a.id || a.assetId))
-                      const state = isListed ? 'EN MARKETPLACE' : 'EN Wallet'
+                      const assetKey = String(a.id || a.assetId || '')
+                      const metadataPrice = parsePriceValue(getAttributeValue(a, ['Valor estimado (USD)', 'Valor', 'Price', 'price_usd']))
+                      const listedPrice = listedAssetPrices[assetKey]
+                      const auctionPrice = auctionAssetPrices[assetKey]
+                      const resolvedPrice = metadataPrice ?? listedPrice ?? auctionPrice ?? null
+                      const assetShort = shortAssetId(assetKey)
+                      const isListed = listedAssetIds.has(assetKey)
+                      const isAuction = auctionAssetIds.has(assetKey)
+                      const state = isListed ? 'EN MARKETPLACE' : isAuction ? 'EN SUBASTA' : 'EN WALLET'
+                      const stateColor = isListed ? '#7c3aed' : isAuction ? '#f59e0b' : '#22c55e'
 
                       return (
                         <tr key={a.id || i}>
@@ -327,9 +382,9 @@ export default function InventoryView(): JSX.Element {
                             </div>
                           </td>
                           <td style={{ fontSize: 12, color: '#8a93b8' }}>{category}</td>
-                          <td style={{ fontFamily: 'JetBrains Mono', color: '#00c8ff', fontWeight: 500 }}>${valor}</td>
+                          <td style={{ fontFamily: 'JetBrains Mono', color: '#00c8ff', fontWeight: 500 }}>{formatPrice(resolvedPrice)}</td>
                           <td><code style={{ fontFamily: 'JetBrains Mono' }}>{assetShort}</code></td>
-                          <td><Badge color={isListed ? '#7c3aed' : '#22c55e'}>{state}</Badge></td>
+                          <td><Badge color={stateColor}>{state}</Badge></td>
                           <td style={{ textAlign: 'right', paddingRight: 16 }}>
                             <div style={{ display: 'inline-flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end' }}>
                               <button

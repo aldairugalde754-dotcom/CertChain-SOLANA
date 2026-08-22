@@ -4,6 +4,7 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ClientMarketplace, ClientAuctions, ClientTransfer } from './views/ClientViews'
 import { CompanyCertify } from './views/CompanyViews'
+import InventoryView from './views/InventoryView'
 import { TopBar } from './components/Shared'
 
 vi.mock('@solana/wallet-adapter-react', () => ({
@@ -95,6 +96,50 @@ describe('ClientMarketplace cart flow', () => {
     render(<ClientTransfer user={{}} />)
 
     expect(await screen.findByText(/no tienes certificados cNFT/i)).toBeInTheDocument()
+  })
+
+  it('shows the auction price and status for assets without metadata price', async () => {
+    mockFetch.mockReset()
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result: {
+            assets: [{
+              id: 'asset-auction-1',
+              compression: { compressed: true },
+              burnt: false,
+              content: {
+                metadata: {
+                  name: 'Anillo de Plata',
+                  symbol: 'CERT',
+                  attributes: [{ trait_type: 'Categoría', value: 'Joyería' }],
+                },
+              },
+            }],
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => [],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{
+          asset_id: 'asset-auction-1',
+          starting_price: 150,
+          current_bid: 180,
+          status: 'live',
+          title: 'Anillo de Plata',
+        }],
+      })
+
+    render(<InventoryView />)
+
+    expect(await screen.findByText(/Anillo de Plata/i)).toBeInTheDocument()
+    expect(screen.getByText('$180')).toBeInTheDocument()
+    expect(screen.getByText(/EN SUBASTA/i)).toBeInTheDocument()
   })
 
   it('opens user profile and notifications panels from the top bar', async () => {
