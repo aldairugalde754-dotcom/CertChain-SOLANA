@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { useWallet } from '@solana/wallet-adapter-react'
 import { PublicKey } from '@solana/web3.js'
 import { useUmi } from '../hooks/useUmi'
-import { transfer as bubblegumTransfer } from '@metaplex-foundation/mpl-bubblegum'
+import { getAssetWithProof, transfer as bubblegumTransfer } from '@metaplex-foundation/mpl-bubblegum'
 import { publicKey as umiPublicKey } from '@metaplex-foundation/umi'
 import { TopBar, Badge, MOCK_PRODUCTS, SectionTitle } from '../components/Shared'
 import { API_BASE_URL } from '../config'
@@ -23,6 +23,29 @@ function shortAssetId(id: string) {
 function getImageFromAsset(asset: DasAsset) {
   if (!asset) return DEFAULT_ASSET_IMAGE;
   return resolveAssetImage(asset) || DEFAULT_ASSET_IMAGE;
+}
+
+async function sendBubblegumTransferWithRetry(umi: any, transferInput: any) {
+  const attempts = 3
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await bubblegumTransfer(umi, transferInput).sendAndConfirm(umi, { commitment: 'confirmed' })
+    } catch (txErr: any) {
+      const message = txErr?.message || String(txErr)
+      const logs = typeof txErr.getLogs === 'function' ? await txErr.getLogs().catch(() => []) : []
+      const joined = Array.isArray(logs) ? logs.join('\n') : String(logs)
+
+      const isBlockhashIssue = message.includes('Blockhash not found') || joined.includes('Blockhash not found') || message.includes('blockhash')
+      if (isBlockhashIssue && attempt < attempts - 1) {
+        continue
+      }
+
+      throw txErr
+    }
+  }
+
+  throw new Error('No se pudo enviar la transferencia después de reintentar por blockhash expirado.')
 }
 
 export default function TransferView(): JSX.Element {
@@ -129,96 +152,27 @@ export default function TransferView(): JSX.Element {
     setProcessing(true)
 
     try {
-      // 1) Obtain merkle proof via DAS API getAssetProof (try `id` then fallback to `assetId`)
-      const primaryPayload = { jsonrpc: '2.0', id: 'get-proof', method: 'getAssetProof', params: { id: selectedCert.id || selectedCert.assetId || selectedCert.id } }
-      let proofRes = await fetch(RPC_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(primaryPayload) })
-      if (!proofRes.ok) throw new Error('No se pudo obtener proof: ' + proofRes.status)
-      let proofJson = await proofRes.json()
+      const assetId = selectedCert.id || selectedCert.assetId || selectedCert.mint || ''
+      if (!assetId) throw new Error('No se pudo resolver el asset_id del certificado para la transferencia.')
 
-      if (proofJson?.error && String(proofJson.error?.message || '').toLowerCase().includes('unknown field') && String(proofJson.error?.message || '').toLowerCase().includes('id')) {
-        // retry with legacy param name
-        console.warn('Primary getAssetProof rejected `id` field; retrying with `assetId`')
-        const fallbackPayload = { jsonrpc: '2.0', id: 'get-proof', method: 'getAssetProof', params: { assetId: selectedCert.id || selectedCert.assetId || selectedCert.id } }
-        proofRes = await fetch(RPC_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fallbackPayload) })
-        if (!proofRes.ok) throw new Error('No se pudo obtener proof (fallback): ' + proofRes.status)
-        proofJson = await proofRes.json()
-      }
-
-      console.debug('getAssetProof response:', proofJson)
-      if (proofJson?.error) {
-        const msg = proofJson.error?.message || JSON.stringify(proofJson.error)
-        setError('getAssetProof RPC error: ' + msg)
-        setProcessing(false)
-        return
-      }
-
-      const proof = proofJson.result || proofJson
-      if (!proof) throw new Error('Proof vacío desde DAS API')
-
-      // Helper: try several locations to find a numeric index/nonce
-      const extractNodeIndex = (p: any) => {
-        const candidates = [
-          p?.node_index,
-          p?.index,
-          p?.nonce,
-          p?.leaf_index,
-          p?.leaf?.index,
-          p?.leaf?.node_index,
-          p?.leaf?.nonce,
-          p?.node?.index,
-        ]
-        for (const c of candidates) {
-          if (c !== undefined && c !== null) return c
-        }
-        // try shallow search
-        for (const k of Object.keys(p || {})) {
-          const v = p[k]
-          if (v && typeof v === 'object') {
-            for (const kk of ['node_index', 'index', 'nonce', 'leaf_index']) {
-              if (v[kk] !== undefined) return v[kk]
-            }
-          }
-        }
-        return undefined
-      }
-
-      // 2) Build and send transfer instruction via Bubblegum
-      // Note: transfer requires several proof fields coming from getAssetProof
-      const merkleTreePubkey = selectedCert.compression?.tree || CERTCHAIN_MERKLE_TREE_PUBKEY
-
-      // Validate proof fields and convert types where necessary
-      const nodeIndexRaw = extractNodeIndex(proof)
-      if (nodeIndexRaw === undefined || nodeIndexRaw === null) {
-        console.error('Proof object (for debugging):', proof)
-        throw new Error('Proof missing node index/nonce (node_index/index). Cannot build transfer. Revisa la respuesta de getAssetProof en la consola.')
-      }
-
-      let nodeIndexBig: bigint
-      try {
-        nodeIndexBig = BigInt(nodeIndexRaw)
-      } catch (e) {
-        throw new Error('No se pudo convertir node index/nonce a BigInt: ' + String(nodeIndexRaw))
-      }
-
-      const proofArray = proof.proof || proof.proofs || proof.leaf_proof || proof.proof_nodes
-      if (!Array.isArray(proofArray)) {
-        console.error('Proof array inesperado:', proofArray)
-        throw new Error('Proof format inesperado: se esperaba un arreglo de nodos de prueba.')
-      }
+      const assetWithProof = await getAssetWithProof(umi, assetId, { truncateCanopy: true })
+      const currentOwner = umi.identity.publicKey
+      const merkleTreePubkey = assetWithProof.merkleTree.toString()
 
       let txBuilder: any
       try {
-        txBuilder = await bubblegumTransfer(umi, {
-          leafOwner: umi.identity.publicKey,
+        txBuilder = await sendBubblegumTransferWithRetry(umi, {
+          leafOwner: currentOwner,
+          leafDelegate: currentOwner,
           newLeafOwner: umiPublicKey(destPub.toString()),
           merkleTree: umiPublicKey(merkleTreePubkey),
-          root: proof.root,
-          dataHash: proof.data_hash || proof.dataHash,
-          creatorHash: proof.creator_hash || proof.creatorHash,
-          nonce: nodeIndexBig,
-          index: nodeIndexBig,
-          proof: proofArray,
-        }).sendAndConfirm(umi)
+          root: assetWithProof.root,
+          dataHash: assetWithProof.dataHash,
+          creatorHash: assetWithProof.creatorHash,
+          nonce: assetWithProof.nonce,
+          index: assetWithProof.index,
+          proof: assetWithProof.proof,
+        })
       } catch (txErr: any) {
         console.error('Bubblegum transfer error:', txErr)
         // If error exposes getLogs(), call it for richer diagnostics
