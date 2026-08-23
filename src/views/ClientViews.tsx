@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useWallet } from '@solana/wallet-adapter-react'
-import { PublicKey } from '@solana/web3.js'
+import { Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js'
 import { Search, ShoppingCart, Heart, TrendingUp, ArrowUpRight, Package, Send, AlertCircle, CheckCircle2, Zap } from 'lucide-react'
 import { getAssetWithProof, transfer as bubblegumTransfer } from '@metaplex-foundation/mpl-bubblegum'
 import { publicKey as umiPublicKey } from '@metaplex-foundation/umi'
@@ -393,7 +393,7 @@ function ProductCard({ product, inCart, onAddCart }: { product: any; inCart: boo
 // ─── AUCTIONS ─────────────────────────────────────────────────────────────────
 
 export function ClientAuctions() {
-  const { publicKey } = useWallet()
+  const { publicKey, sendTransaction } = useWallet()
   const { comprarDirectoCpi, program, getRegistroPda } = useCertChainProgram()
   const [auctions, setAuctions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -570,50 +570,111 @@ export function ClientAuctions() {
   }
 
   const handleClaimAuction = async (auction: any) => {
-    if (!publicKey) return setBidError(prev => ({ ...prev, [auction.id || auction.asset_id]: 'Conecta tu wallet para reclamar' }))
+    const auctionKey = auction.id || auction.asset_id
+    if (!publicKey || !sendTransaction) {
+      return setBidError(prev => ({ ...prev, [auctionKey]: 'Conecta tu wallet para reclamar' }))
+    }
+
+    try {
+      setBidError(prev => ({ ...prev, [auctionKey]: '' }))
+
+      // 1. Obtener precio en USD de la puja ganadora
+      const priceUSD = Number(auction.current_bid || auction.highest_bid || auction.price_usd || 0)
+      if (!priceUSD || priceUSD <= 0) {
+        throw new Error('El monto de la puja no es válido')
+      }
+
+      // 2. Obtener tasa de cambio SOL/USD en vivo
+      let solUsdRate = 150
       try {
-        // attempt to read admin pubkey from registro_global; if missing, fallback to simple transfer flow
-        let adminPub = ''
-        let registroExists = false
-        try {
-          if (program && getRegistroPda) {
-            const registroPda = getRegistroPda()
-            const registroData: any = await program.account.registroGlobal.fetch(registroPda)
-            adminPub = registroData?.admin?.toString() || ''
-            registroExists = true
+        const rateRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd')
+        if (rateRes.ok) {
+          const rateData = await rateRes.json()
+          if (rateData?.solana?.usd) {
+            solUsdRate = Number(rateData.solana.usd)
           }
-        } catch (e) {
-          console.warn('registro_global no disponible, se usará fallback a transferencia simple:', e)
-          registroExists = false
         }
+      } catch (rateErr) {
+        console.warn('No se pudo obtener tasa SOL/USD en vivo para la subasta, usando 150:', rateErr)
+      }
 
-        let sig: string | null = null
-        if (registroExists) {
-          // Call program CPI to perform payment + transfer atomically
-          sig = await comprarDirectoCpi({ assetIdStr: String(auction.asset_id), vendedorStr: auction.seller_wallet, adminStr: adminPub })
-          console.log('comprarDirectoCpi signature', sig)
-        } else {
-          // Fallback: inform the user to use simple payment flow or perform server-side settlement
-          throw new Error('El registro on-chain no está inicializado en esta red; no es posible ejecutar la compra atómica. Por favor use fallback o contacte al administrador.')
+      const solAmount = priceUSD / solUsdRate
+      const lamports = Math.max(Math.ceil(solAmount * LAMPORTS_PER_SOL), 1000)
+
+      if (!auction.seller_wallet) {
+        throw new Error('No se encontró la wallet vendedora de la subasta')
+      }
+      const sellerPubkey = new PublicKey(auction.seller_wallet)
+      const rpcUrl = process.env.VITE_SOLANA_RPC_URL || 'https://api.devnet.solana.com'
+      const connection = new Connection(rpcUrl, 'confirmed')
+
+      let paymentSignature: string | null = null
+
+      // 3. Intentar CPI atómico si el registro global existe en Anchor
+      let adminPub = ''
+      let registroExists = false
+      try {
+        if (program && getRegistroPda) {
+          const registroPda = getRegistroPda()
+          const registroData: any = await program.account.registroGlobal.fetch(registroPda)
+          adminPub = registroData?.admin?.toString() || ''
+          registroExists = true
         }
+      } catch (e) {
+        registroExists = false
+      }
 
-        // Notify backend to record sale and update off-chain owner
+      if (registroExists && comprarDirectoCpi) {
         try {
-          await fetch(`${API_BASE_URL}/api/auctions/claim`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ asset_id: auction.asset_id, buyer_wallet: publicKey.toString(), tx_hash: sig, bid_amount: auction.current_bid })
+          paymentSignature = await comprarDirectoCpi({
+            assetIdStr: String(auction.asset_id),
+            vendedorStr: auction.seller_wallet,
+            adminStr: adminPub,
           })
-        } catch (err) {
-          console.warn('No se pudo notificar al backend de la reclamación:', err)
+          console.log('comprarDirectoCpi subasta signature:', paymentSignature)
+        } catch (cpiErr: any) {
+          console.warn('comprarDirectoCpi falló en subasta, ejecutando pago simple en SOL:', cpiErr?.message || cpiErr)
         }
+      }
+
+      // Si no se usó o falló CPI, realizar transferencia simple de SOL del ganador al vendedor
+      if (!paymentSignature) {
+        const recentBlockhash = (await connection.getLatestBlockhash()).blockhash
+        const paymentTx = new Transaction({ recentBlockhash, feePayer: publicKey }).add(
+          SystemProgram.transfer({ fromPubkey: publicKey, toPubkey: sellerPubkey, lamports })
+        )
+        paymentSignature = await sendTransaction(paymentTx, connection)
+        await connection.confirmTransaction(paymentSignature, 'confirmed')
+        console.log('Pago de subasta en SOL confirmado:', paymentSignature)
+      }
+
+      // 4. Notificar al backend para registrar la venta y transferir el cNFT on-chain en Solana
+      const claimRes = await fetch(`${API_BASE_URL}/api/auctions/claim`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          asset_id: auction.asset_id,
+          buyer_wallet: publicKey.toString(),
+          tx_hash: paymentSignature,
+          bid_amount: priceUSD,
+        }),
+      })
+
+      if (!claimRes.ok) {
+        const claimErrJson = await claimRes.json().catch(() => ({ error: 'Error registrando reclamo' }))
+        throw new Error(claimErrJson.error || 'Error registrando reclamo de subasta')
+      }
+
+      const claimResult = await claimRes.json()
+      console.log('Subasta reclamada exitosamente:', claimResult)
 
       triggerDataRefresh('auctions')
       triggerDataRefresh('inventory')
-      setPlacedBids(prev => prev) // trigger re-render
+      triggerDataRefresh('all')
+      fetchAuctions()
     } catch (err: any) {
-      console.error('Error claiming auction', err)
-      setBidError(prev => ({ ...prev, [auction.id || auction.asset_id]: err.message || String(err) }))
+      console.error('Error claiming auction:', err)
+      setBidError(prev => ({ ...prev, [auctionKey]: err.message || String(err) }))
     }
   }
 
