@@ -27,8 +27,12 @@ export function useCertChainProgram() {
 
   const program = useMemo(() => {
     if (!provider) return null;
-    // Program constructor expects the program ID as the second argument and provider as the third
-  return new Program(idl as Certchain, CERTCHAIN_PROGRAM_ID, provider);
+    try {
+      return new Program(idl as any, CERTCHAIN_PROGRAM_ID, provider);
+    } catch (err) {
+      console.warn('Error al inicializar el programa Anchor:', err);
+      return null;
+    }
   }, [provider]);
 
   const getRegistroPda = () => {
