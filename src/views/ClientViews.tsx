@@ -11,6 +11,7 @@ import { useMarketplaceCheckout } from '../hooks/useMarketplaceCheckout'
 import { useUmi } from '../hooks/useUmi'
 import { useCertChainProgram } from '../hooks/useCertChainProgram'
 import { subscribeToDataRefresh, triggerDataRefresh } from '../utils/dataRefresh'
+import { QrCode, Copy, Check, ExternalLink, X } from 'lucide-react'
 
 function getCertificateIdFromAuction(auction: any) {
   if (!auction) return ''
@@ -1124,7 +1125,13 @@ export function ClientHistory() {
   )
 }
 
-// ─── CLIENT WALLET / cNFT CATALOG ─────────────────────────────────────────────
+/// WALEET cNFT Inventory Component ///
+
+// Utilidad para formatear valores monetarios de forma segura
+function formatCurrency(val: number): string {
+  if (isNaN(val) || val < 0) return '$0'
+  return `$${val.toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
+}
 
 function getAssetValue(asset: any) {
   const attrs = asset?.content?.metadata?.attributes || asset?.content?.attributes || []
@@ -1140,12 +1147,12 @@ function getAssetValue(asset: any) {
     if (found) {
       const raw = found.value ?? found.value_string ?? found.trait_value ?? null
       const parsed = Number(String(raw).replace(/[$,]/g, ''))
-      if (!Number.isNaN(parsed)) return parsed
+      if (!Number.isNaN(parsed) && parsed >= 0) return parsed
     }
   }
 
   const fallback = Number(String(asset?.price_usd ?? asset?.price ?? 0).replace(/[$,]/g, ''))
-  return Number.isNaN(fallback) ? 0 : fallback
+  return Number.isNaN(fallback) || fallback < 0 ? 0 : fallback
 }
 
 function getAssetCategory(asset: any) {
@@ -1160,7 +1167,7 @@ function getAssetCategory(asset: any) {
 }
 
 function getAssetImage(asset: any) {
-  const image = resolveAssetImage(asset) || DEFAULT_ASSET_IMAGE
+  const image = resolveAssetImage?.(asset) || asset?.content?.links?.image || DEFAULT_ASSET_IMAGE
   return image || DEFAULT_ASSET_IMAGE
 }
 
@@ -1171,7 +1178,15 @@ export function ClientWallet() {
   const [error, setError] = useState<string | null>(null)
   const [marketplaceListings, setMarketplaceListings] = useState<any[]>([])
   const [auctionListings, setAuctionListings] = useState<any[]>([])
-  const [qrVisible, setQrVisible] = useState<{ visible: boolean; url: string; title?: string }>({ visible: false, url: '', title: '' })
+  const [copiedWallet, setCopiedWallet] = useState(false)
+  
+  // Estado para el modal de QR
+  const [qrModal, setQrModal] = useState<{ open: boolean; url: string; title: string; assetId: string }>({
+    open: false,
+    url: '',
+    title: '',
+    assetId: ''
+  })
 
   useEffect(() => {
     let cancelled = false
@@ -1205,7 +1220,7 @@ export function ClientWallet() {
           body: JSON.stringify(payload),
         })
 
-        if (!res.ok) throw new Error(`RPC error ${res.status}`)
+        if (!res.ok) throw new Error(`Error RPC ${res.status}`)
 
         const json = await res.json()
         const candidates = json.result?.assets || json.result?.items || json.result || []
@@ -1243,7 +1258,7 @@ export function ClientWallet() {
     }
 
     fetchWalletAssets()
-    // Fetch marketplace and auctions to compute statuses
+
     async function fetchExternalLists() {
       try {
         const [mRes, aRes] = await Promise.all([
@@ -1269,56 +1284,96 @@ export function ClientWallet() {
   const totalValue = assets.reduce((sum, asset) => sum + getAssetValue(asset), 0)
   const walletAddress = publicKey ? publicKey.toString() : ''
 
+  const handleCopyWallet = () => {
+    if (!walletAddress) return
+    navigator.clipboard?.writeText(walletAddress).then(() => {
+      setCopiedWallet(true)
+      setTimeout(() => setCopiedWallet(false), 2000)
+    }).catch(() => {})
+  }
+
   return (
-    <div style={{ flex: 1, overflow: 'auto' }}>
+    <div style={{ flex: 1, overflowY: 'auto', background: '#070913', minHeight: '100vh', color: '#f0f4f9' }}>
       <TopBar title="Mi Wallet" subtitle="Certificados cNFT en mi propiedad" />
-      <div style={{ padding: '28px 32px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginBottom: 32 }}>
-          <StatCard label="Total de cNFTs" value={String(assets.length)} icon={<Package size={16} />} color="#00c8ff" />
-          <StatCard label="Valor estimado" value={`$${totalValue.toLocaleString()}`} icon={<TrendingUp size={16} />} color="#7c3aed" delta={assets.length > 0 ? '+12.4%' : '0%' } />
-          <StatCard label="Red blockchain" value="Solana" icon={<Zap size={16} />} color="#f59e0b" />
+
+      <div style={{ padding: '24px 32px', maxWidth: 1400, margin: '0 auto' }}>
+        
+        {/* METRICS METRICS METRICS */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 28 }}>
+          <StatCard label="Total de cNFTs" value={String(assets.length)} icon={<Package size={18} />} color="#00c8ff" />
+          <StatCard label="Valor estimado" value={formatCurrency(totalValue)} icon={<TrendingUp size={18} />} color="#7c3aed" delta={assets.length > 0 ? '+12.4%' : '0%'} />
+          <StatCard label="Red blockchain" value="Solana Devnet" icon={<Zap size={18} />} color="#f59e0b" />
         </div>
 
-        <div className="glow-border" style={{ background: '#0c0f1d', borderRadius: 12, padding: '16px 20px', marginBottom: 32, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, color: '#5a6485', letterSpacing: '0.1em', marginBottom: 4 }}>DIRECCIÓN DE WALLET</div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <div style={{ fontFamily: 'JetBrains Mono', fontSize: 13, color: '#dde3f0', overflowWrap: 'anywhere' }}>{walletAddress || 'Sin wallet conectada'}</div>
-              {walletAddress && (
-                <button
-                  type="button"
-                  onClick={() => { navigator.clipboard?.writeText(walletAddress).catch(() => {}) }}
-                  className="btn-ghost"
-                  style={{ fontSize: 12 }}
-                >Copiar</button>
-              )}
+        {/* FULL WALLET ADDRESS BANNER */}
+        <div className="glow-border" style={{ background: '#0d1126', border: '1px solid rgba(0,200,255,0.15)', borderRadius: 14, padding: '18px 24px', marginBottom: 32, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 280 }}>
+            <div style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: '#00c8ff', letterSpacing: '0.12em', fontWeight: 600, marginBottom: 6 }}>
+              DIRECCIÓN DE WALLET CONECTADA
+            </div>
+            <div style={{ fontFamily: 'JetBrains Mono', fontSize: 13, color: '#ffffff', wordBreak: 'break-all', background: 'rgba(0,0,0,0.3)', padding: '8px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.05)' }}>
+              {walletAddress || 'Sin wallet conectada'}
             </div>
           </div>
-          <Badge color={publicKey ? '#22c55e' : '#f59e0b'}>{publicKey ? 'Conectada' : 'Sin conectar'}</Badge>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {walletAddress && (
+              <button
+                type="button"
+                onClick={handleCopyWallet}
+                className="btn-ghost"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '8px 16px',
+                  borderRadius: 8,
+                  fontSize: 12,
+                  fontFamily: 'JetBrains Mono',
+                  background: copiedWallet ? 'rgba(34, 197, 94, 0.15)' : 'rgba(0, 200, 255, 0.1)',
+                  border: `1px solid ${copiedWallet ? '#22c55e' : 'rgba(0, 200, 255, 0.3)'}`,
+                  color: copiedWallet ? '#22c55e' : '#00c8ff',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                {copiedWallet ? <Check size={14} /> : <Copy size={14} />}
+                {copiedWallet ? 'Copiado' : 'Copiar'}
+              </button>
+            )}
+            <Badge color={publicKey ? '#22c55e' : '#f59e0b'}>
+              {publicKey ? 'Conectada' : 'Sin conectar'}
+            </Badge>
+          </div>
         </div>
 
-        <SectionTitle sub="Todos tus certificados de propiedad digitales">Mis Certificados cNFT</SectionTitle>
+        {/* SECTION HEADER */}
+        <SectionTitle sub="Todos tus certificados de propiedad digitales en la red Solana">
+          Mis Certificados cNFT
+        </SectionTitle>
 
+        {/* CONTENT STATES */}
         {loading ? (
-          <div style={{ padding: '42px 20px', textAlign: 'center', color: '#8a93b8', fontFamily: 'JetBrains Mono', fontSize: 12 }}>
-            Consultando activos en tu wallet...
+          <div style={{ padding: '60px 20px', textAlign: 'center', color: '#8a93b8', fontFamily: 'JetBrains Mono', fontSize: 13 }}>
+            Consultando activos en la blockchain...
           </div>
         ) : error ? (
-          <div style={{ padding: '18px 20px', borderRadius: 12, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.22)', color: '#fecaca', fontFamily: 'JetBrains Mono', fontSize: 12 }}>
+          <div style={{ padding: '20px', borderRadius: 12, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.22)', color: '#fecaca', fontFamily: 'JetBrains Mono', fontSize: 12 }}>
             {error}
           </div>
         ) : !publicKey ? (
-          <div style={{ padding: '42px 20px', border: '1px dashed rgba(0,200,255,0.2)', borderRadius: 12, textAlign: 'center', background: 'rgba(0,200,255,0.03)' }}>
-            <div style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, marginBottom: 8, color: '#f0f4f9' }}>Conecta tu wallet</div>
-            <div style={{ color: '#8a93b8', fontSize: 13 }}>Necesitas conectar una wallet Solana para ver tus certificados cNFT.</div>
+          <div style={{ padding: '60px 20px', border: '1px dashed rgba(0,200,255,0.2)', borderRadius: 14, textAlign: 'center', background: 'rgba(0,200,255,0.02)' }}>
+            <div style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Conecta tu wallet</div>
+            <div style={{ color: '#8a93b8', fontSize: 13 }}>Necesitas conectar tu Phantom o Solflare Wallet para gestionar tus cNFTs.</div>
           </div>
         ) : assets.length === 0 ? (
-          <div style={{ padding: '42px 20px', border: '1px dashed rgba(0,200,255,0.2)', borderRadius: 12, textAlign: 'center', background: 'rgba(0,200,255,0.03)' }}>
-            <div style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, marginBottom: 8, color: '#f0f4f9' }}>No tienes certificados cNFT</div>
-            <div style={{ color: '#8a93b8', fontSize: 13 }}>Cuando poses algún certificado verificado, aparecerá aquí tu inventario.</div>
+          <div style={{ padding: '60px 20px', border: '1px dashed rgba(0,200,255,0.2)', borderRadius: 14, textAlign: 'center', background: 'rgba(0,200,255,0.02)' }}>
+            <div style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, marginBottom: 8 }}>No tienes certificados cNFT</div>
+            <div style={{ color: '#8a93b8', fontSize: 13 }}>Cuando emitas o adquieras un certificado verificado, aparecerá aquí.</div>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20 }}>
+          /* GRID DE CARDS */
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(310px, 1fr))', gap: 24 }}>
             {assets.map((asset: any, idx: number) => {
               const name = asset?.content?.metadata?.name || `Certificado ${String(asset?.id || asset?.assetId || idx)}`
               const category = getAssetCategory(asset)
@@ -1327,70 +1382,129 @@ export function ClientWallet() {
               const image = getAssetImage(asset)
               const assetId = String(asset?.id || asset?.assetId || '')
 
+              // Validación del estado del Certificado
+              const inMarketplace = marketplaceListings.some((l: any) => String(l.asset_id || l.assetId || l.id || '') === assetId)
+              const inAuction = auctionListings.some((a: any) => String(a.asset_id || a.assetId || a.id || '') === assetId)
+
+              const traceUrl = `${window.location.origin}/traceability/${encodeURIComponent(assetId)}`
+
               return (
                 <div
                   key={`${assetId || idx}`}
-                  className="nft-glow card-hover"
-                  style={{ background: '#0c0f1d', borderRadius: 12, overflow: 'hidden' }}
+                  style={{
+                    background: '#0e1225',
+                    borderRadius: 16,
+                    border: '1px solid rgba(255,255,255,0.07)',
+                    overflow: 'hidden',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+                    transition: 'transform 0.2s, border-color 0.2s'
+                  }}
+                  className="card-hover"
                 >
-                  <div style={{ position: 'relative', height: 180 }}>
-                    <img src={image} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, rgba(0,200,255,0.1), rgba(124,58,237,0.15))' }} />
-                    <div style={{ position: 'absolute', top: 10, left: 10, display: 'flex', gap: 6 }}>
-                      <Badge color="#00c8ff">{assetId ? assetId.slice(0, 8) : `CNFT-${idx + 1}`}</Badge>
+                  {/* IMAGEN DE CARD CON PROPORCIÓN ADECUADA */}
+                  <div style={{ position: 'relative', width: '100%', height: 210, background: '#05070f', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                    <img
+                      src={image}
+                      alt={name}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                    <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, #0e1225 0%, transparent 60%)' }} />
+                    
+                    {/* ID BADGE */}
+                    <div style={{ position: 'absolute', top: 12, left: 12 }}>
+                      <Badge color="#00c8ff">{assetId ? `${assetId.slice(0, 6)}...` : `CNFT-${idx + 1}`}</Badge>
                     </div>
-                    <div style={{ position: 'absolute', top: 10, right: 10 }}>
-                      {(() => {
-                        const assetIdStr = String(asset?.id || asset?.assetId || '')
-                        const inMarketplace = marketplaceListings.some((l: any) => String(l.asset_id || l.assetId || l.id || '') === assetIdStr)
-                        const inAuction = auctionListings.some((a: any) => String(a.asset_id || a.assetId || a.id || '') === assetIdStr)
-                        if (inAuction) return <Badge color="#f59e0b">Subasta</Badge>
-                        if (inMarketplace) return <Badge color="#f97316">Marketplace</Badge>
-                        return <Badge color="#22c55e">Tuyo</Badge>
-                      })()}
+
+                    {/* STATUS BADGE */}
+                    <div style={{ position: 'absolute', top: 12, right: 12 }}>
+                      {inAuction ? (
+                        <Badge color="#f59e0b">En Subasta</Badge>
+                      ) : inMarketplace ? (
+                        <Badge color="#f97316">En Marketplace</Badge>
+                      ) : (
+                        <Badge color="#22c55e">En Wallet</Badge>
+                      )}
                     </div>
                   </div>
 
-                  <div style={{ padding: '16px' }}>
-                    <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 17, letterSpacing: '0.04em', marginBottom: 4 }}>{name}</div>
-                    <div style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485', marginBottom: 12 }}>{category}</div>
+                  {/* CONTENIDO DE LA CARD */}
+                  <div style={{ padding: '16px 20px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 18, color: '#ffffff', letterSpacing: '0.02em', marginBottom: 2 }}>
+                      {name}
+                    </div>
+                    <div style={{ fontFamily: 'JetBrains Mono', fontSize: 11, color: '#00c8ff', marginBottom: 16 }}>
+                      {category}
+                    </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
-                      <div style={{ background: 'rgba(0,200,255,0.05)', borderRadius: 8, padding: '8px 10px' }}>
-                        <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, color: '#5a6485', marginBottom: 2 }}>ADQUIRIDO</div>
-                        <div style={{ fontFamily: 'JetBrains Mono', fontSize: 11, color: '#dde3f0' }}>{acquired}</div>
+                    {/* METRADOS ADQUIRIDO / VALOR */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                      <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px', border: '1px solid rgba(255,255,255,0.04)' }}>
+                        <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, color: '#6c7a9c', marginBottom: 2, letterSpacing: '0.05em' }}>ADQUIRIDO</div>
+                        <div style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: '#dde3f0', fontWeight: 600 }}>{acquired}</div>
                       </div>
-                      <div style={{ background: 'rgba(124,58,237,0.05)', borderRadius: 8, padding: '8px 10px' }}>
-                        <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, color: '#5a6485', marginBottom: 2 }}>VALOR</div>
-                        <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 15, color: '#7c3aed' }}>${value.toLocaleString()}</div>
+                      <div style={{ background: 'rgba(124,58,237,0.08)', borderRadius: 10, padding: '10px', border: '1px solid rgba(124,58,237,0.2)' }}>
+                        <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, color: '#a78bfa', marginBottom: 2, letterSpacing: '0.05em' }}>VALOR ESTIMADO</div>
+                        <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 16, color: '#a78bfa' }}>{formatCurrency(value)}</div>
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                      <span style={{ fontFamily: 'JetBrains Mono', fontSize: 9, color: '#5a6485', flexShrink: 0 }}>CERT:</span>
-                      <div style={{ minWidth: 0, overflow: 'hidden' }}>
-                        <HashDisplay hash={assetId || 'wallet-asset'} />
-                      </div>
-                      <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-                        <button
-                          type="button"
-                          onClick={() => window.open(`${window.location.origin}/traceability/${encodeURIComponent(assetId)}`, '_blank')}
-                          className="btn-ghost"
-                          style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                        >
-                          <ArrowUpRight size={13} /> Historial
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const url = `${window.location.origin}/traceability/${encodeURIComponent(assetId)}`
-                            setQrVisible({ visible: true, url, title: name })
-                          }}
-                          className="btn-primary"
-                          style={{ fontSize: 12 }}
-                        >Verificar (QR)</button>
+                    {/* HASH COMPONENT CLEANUP */}
+                    <div style={{ marginBottom: 18, background: 'rgba(0,0,0,0.2)', padding: '8px 10px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485' }}>HASH:</span>
+                      <div style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'JetBrains Mono', fontSize: 11, color: '#a0aec0' }}>
+                        {assetId}
                       </div>
                     </div>
+
+                    {/* BOTONES DE ACCIÓN REDISEÑADOS */}
+                    <div style={{ marginTop: 'auto', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      <button
+                        type="button"
+                        onClick={() => window.open(traceUrl, '_blank')}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6,
+                          padding: '10px',
+                          borderRadius: 10,
+                          fontSize: 12,
+                          fontFamily: 'JetBrains Mono',
+                          fontWeight: 600,
+                          background: 'rgba(255,255,255,0.05)',
+                          border: '1px solid rgba(255,255,255,0.1)',
+                          color: '#ffffff',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <ArrowUpRight size={14} /> Historial
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setQrModal({ open: true, url: traceUrl, title: name, assetId })}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6,
+                          padding: '10px',
+                          borderRadius: 10,
+                          fontSize: 12,
+                          fontFamily: 'JetBrains Mono',
+                          fontWeight: 600,
+                          background: 'linear-gradient(135deg, #00c8ff 0%, #0088ff 100%)',
+                          border: 'none',
+                          color: '#000000',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <QrCode size={14} /> Código QR
+                      </button>
+                    </div>
+
                   </div>
                 </div>
               )
@@ -1398,6 +1512,60 @@ export function ClientWallet() {
           </div>
         )}
       </div>
+
+      {/* MODAL GENERADOR CÓDIGO QR DE VERIFICACIÓN */}
+      {qrModal.open && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(3, 5, 12, 0.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: '#0e1225', border: '1px solid rgba(0,200,255,0.3)', borderRadius: 20, padding: 28, maxWidth: 380, width: '100%', textAlign: 'center', position: 'relative', boxShadow: '0 20px 50px rgba(0,0,0,0.6)' }}>
+            <button
+              onClick={() => setQrModal({ open: false, url: '', title: '', assetId: '' })}
+              style={{ position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', color: '#8a93b8', cursor: 'pointer' }}
+            >
+              <X size={20} />
+            </button>
+
+            <div style={{ fontFamily: 'Rajdhani', fontSize: 20, fontWeight: 700, marginBottom: 4, color: '#fff' }}>Verificación en Blockchain</div>
+            <div style={{ fontFamily: 'JetBrains Mono', fontSize: 11, color: '#00c8ff', marginBottom: 20 }}>{qrModal.title}</div>
+
+            {/* INTEGRACIÓN DE QR (Mediante API de Google Charts o Canvas QR) */}
+            <div style={{ background: '#ffffff', padding: 16, borderRadius: 14, display: 'inline-block', marginBottom: 20 }}>
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(qrModal.url)}`}
+                alt="QR Code"
+                style={{ width: 180, height: 180, display: 'block' }}
+              />
+            </div>
+
+            <div style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: '#6c7a9c', marginBottom: 16, wordBreak: 'break-all' }}>
+              ID: {qrModal.assetId}
+            </div>
+
+            <a
+              href={qrModal.url}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                width: '100%',
+                padding: '12px',
+                borderRadius: 10,
+                background: 'rgba(0, 200, 255, 0.12)',
+                border: '1px solid rgba(0, 200, 255, 0.3)',
+                color: '#00c8ff',
+                fontFamily: 'JetBrains Mono',
+                fontSize: 12,
+                textDecoration: 'none',
+                fontWeight: 600
+              }}
+            >
+              <ExternalLink size={14} /> Abrir trazabilidad pública
+            </a>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
