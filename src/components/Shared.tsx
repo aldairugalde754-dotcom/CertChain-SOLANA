@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import React, { useEffect, useState, type ReactNode } from 'react'
 import {
   Store, Gavel, Search, Wallet, ArrowRightLeft,
   FileCheck, LogOut,
@@ -110,7 +110,7 @@ export function Sidebar({ role, activeView, onNavigate, onLogout }: SidebarProps
             onClick={() => onNavigate(item.id as ClientView & CompanyView)}
             style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left', cursor: 'pointer' }}
           >
-            {item.icon}
+            {React.isValidElement(item.icon) ? item.icon : <span style={{ display: 'inline-block', width: 16, height: 16 }} />}
             {item.label}
           </button>
         ))}
@@ -133,7 +133,7 @@ export function Sidebar({ role, activeView, onNavigate, onLogout }: SidebarProps
           onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#ff6b6b' }}
           onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = '#5a6485' }}
         >
-          <LogOut size={16} />
+          {typeof LogOut === 'function' ? <LogOut size={16} /> : <span style={{ display: 'inline-block', width: 16, height: 16 }} />}
           Salir
         </button>
       </div>
@@ -235,7 +235,7 @@ export function TopBar({ title, subtitle, actions, user: userProp }: TopBarProps
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: 'pointer', position: 'relative',
         }}>
-          <Bell size={14} color="#8a93b8" />
+          {typeof Bell === 'function' ? <Bell size={14} color="#8a93b8" /> : <span style={{ display: 'inline-block', width: 14, height: 14 }} />}
           <span style={{ position: 'absolute', top: -4, right: -2, width: 10, height: 10, borderRadius: '50%', background: '#22c55e', border: '2px solid #07111b' }} />
         </div>
 
@@ -305,7 +305,7 @@ export function StatCard({ label, value, icon, color = '#00c8ff', delta }: {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           color,
         }}>
-          {icon}
+          {React.isValidElement(icon) ? icon : <span style={{ display: 'inline-block', width: 16, height: 16 }} />}
         </div>
         {delta && <span style={{ fontFamily: 'JetBrains Mono', fontSize: 11, color: '#22c55e' }}>{delta}</span>}
       </div>
