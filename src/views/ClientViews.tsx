@@ -415,7 +415,6 @@ function ProductCard({ product, inCart, onAddCart }: { product: any; inCart: boo
 
 // ─── AUCTIONS ─────────────────────────────────────────────────────────────────
 
-// Función auxiliar para formatear direcciones/hashes a "DZr3...mAN"
 function truncateAddress(addr: string, start = 4, end = 3) {
   if (!addr) return ''
   if (addr.length <= start + end) return addr
@@ -704,8 +703,10 @@ export function ClientAuctions() {
             <div style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: '#8a93b8' }}>Vuelve más tarde o crea una nueva subasta desde tu panel empresarial.</div>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 310px', gap: 20, alignItems: 'start' }}>
-            {/* Contenedor con máximo 3 cards horizontales por fila */}
+          /* Ancho ajustado para panel lateral de 220px */
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 220px', gap: 18, alignItems: 'start' }}>
+            
+            {/* Grilla principal de 3 subastas horizontales */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
               {itemsToDisplay.map((auction: any) => {
                 const idKey = String(auction.id || auction.asset_id || auction._id || '')
@@ -738,7 +739,7 @@ export function ClientAuctions() {
                       flexDirection: 'column'
                     }}
                   >
-                    {/* Contenedor de Imagen y Badges */}
+                    {/* Imagen y Badges */}
                     <div style={{ position: 'relative', width: '100%', aspectRatio: '1 / 1', background: '#070913', overflow: 'hidden' }}>
                       <img
                         src={imageUrl}
@@ -747,7 +748,6 @@ export function ClientAuctions() {
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       />
                       
-                      {/* Badge Sólido y Legible */}
                       <div style={{ position: 'absolute', top: 8, left: 8 }}>
                         <span style={{
                           background: isEnding ? '#d97706' : '#16a34a',
@@ -764,51 +764,56 @@ export function ClientAuctions() {
                         </span>
                       </div>
 
-                      {/* Contador con Máximo Contraste */}
+                      {/* Contador Cuadrado / Tech estilo Display LCD */}
                       <div style={{ 
                         position: 'absolute', 
                         bottom: 8, 
                         left: 8, 
                         right: 8, 
-                        background: 'rgba(5, 7, 15, 0.85)', 
+                        background: 'rgba(5, 7, 15, 0.9)', 
                         backdropFilter: 'blur(6px)', 
-                        padding: '5px 8px', 
-                        borderRadius: 6,
-                        border: '1px solid rgba(255,255,255,0.1)',
-                        boxShadow: '0 4px 10px rgba(0,0,0,0.5)'
+                        padding: '6px 8px', 
+                        borderRadius: 4,
+                        border: '1px solid rgba(0, 200, 255, 0.2)',
+                        boxShadow: '0 4px 10px rgba(0,0,0,0.6)'
                       }}>
-                        <div style={{ display: 'flex', justifyContent: 'center', gap: 4, alignItems: 'center' }}>
+                        <div style={{ display: 'flex', justifyContent: 'center', gap: 3, alignItems: 'center' }}>
                           {[timeLeftObj.h, timeLeftObj.m, timeLeftObj.s].map((val: string, i: number) => (
-                            <span key={`${idKey}-${i}`} style={{ display: 'flex', alignItems: 'center' }}>
+                            <span key={`${idKey}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
                               <span style={{ 
-                                fontSize: 13, 
+                                fontSize: 14, 
                                 fontWeight: 800, 
                                 color: '#00e5ff', 
-                                fontFamily: 'JetBrains Mono',
-                                textShadow: '0 0 8px rgba(0, 229, 255, 0.4)'
+                                fontFamily: "'Share Tech Mono', 'Orbitron', 'JetBrains Mono', monospace",
+                                letterSpacing: '1px',
+                                background: 'rgba(0, 229, 255, 0.08)',
+                                padding: '1px 5px',
+                                borderRadius: 3,
+                                border: '1px solid rgba(0, 229, 255, 0.2)',
+                                textShadow: '0 0 6px rgba(0, 229, 255, 0.5)'
                               }}>
                                 {val}
                               </span>
-                              {i < 2 && <span style={{ color: '#64748b', fontFamily: 'JetBrains Mono', fontSize: 11, margin: '0 2px' }}>:</span>}
+                              {i < 2 && <span style={{ color: '#00c8ff', fontFamily: "'Share Tech Mono', monospace", fontSize: 13, fontWeight: 700 }}>:</span>}
                             </span>
                           ))}
                         </div>
                       </div>
                     </div>
 
-                    {/* Detalles del Producto y Botón Historial */}
+                    {/* Detalle y Botón Historial de Estilo Primario */}
                     <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'space-between' }}>
                       <div>
                         <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 15, color: '#f0f4f9', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {title}
                         </div>
                         
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2, marginBottom: 8 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, marginBottom: 8 }}>
                           <div style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: '#64748b' }}>
                             Cert: <span style={{ color: '#cbd5e1' }}>{shortCertId}</span>
                           </div>
                           
-                          {/* Botón Historial Certificado */}
+                          {/* Botón Historial con estilo similar a PUJAR */}
                           <a 
                             href={`${window.location.origin}/traceability/${encodeURIComponent(traceId)}`} 
                             target="_blank" 
@@ -816,22 +821,29 @@ export function ClientAuctions() {
                             style={{ textDecoration: 'none' }}
                           >
                             <button 
-                              className="btn-ghost" 
                               style={{ 
-                                padding: '2px 6px', 
-                                fontSize: 9, 
-                                height: 'auto',
-                                fontFamily: 'JetBrains Mono',
-                                border: '1px solid rgba(0,200,255,0.2)',
-                                color: '#00c8ff'
+                                padding: '3px 8px', 
+                                fontSize: 10, 
+                                fontFamily: 'Rajdhani, sans-serif',
+                                fontWeight: 700,
+                                letterSpacing: '0.04em',
+                                background: 'rgba(0, 200, 255, 0.12)',
+                                border: '1px solid rgba(0, 200, 255, 0.4)',
+                                borderRadius: 4,
+                                color: '#00c8ff',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s ease',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 3
                               }}
                             >
-                              Historial ↗
+                              HISTORIAL ↗
                             </button>
                           </a>
                         </div>
 
-                        {/* Precios */}
+                        {/* Bloque Precios */}
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 10, padding: '6px 8px', background: 'rgba(0,200,255,0.04)', borderRadius: 6, border: '1px solid rgba(0,200,255,0.08)' }}>
                           <div>
                             <div style={{ fontFamily: 'JetBrains Mono', fontSize: 8, color: '#64748b', textTransform: 'uppercase' }}>Actual</div>
@@ -844,7 +856,7 @@ export function ClientAuctions() {
                         </div>
                       </div>
 
-                      {/* Inputs de Oferta */}
+                      {/* Acciones Pujar / Reclamar */}
                       {isSuccess ? (
                         <div style={{ padding: '6px', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 6, textAlign: 'center', color: '#22c55e', fontSize: 11, fontFamily: 'Rajdhani', fontWeight: 700 }}>
                           ✓ PUJA ENVIADA
@@ -884,7 +896,7 @@ export function ClientAuctions() {
                               />
                               <button
                                 className={isEnding ? 'btn-gold' : 'btn-primary'}
-                                style={{ padding: '5px 10px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}
+                                style={{ padding: '5px 12px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}
                                 onClick={() => handleBid(idKey, auction.asset_id || auction.id, currentBidVal || startingVal)}
                               >
                                 PUJAR
@@ -904,19 +916,19 @@ export function ClientAuctions() {
               })}
             </div>
 
-            {/* Historial Lateral Compacto con Nombres y Wallets Abreviadas */}
-            <div style={{ background: '#0c0f1d', borderRadius: 10, border: '1px solid rgba(0,200,255,0.1)', padding: 12 }}>
-              <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 15, color: '#f0f4f9', marginBottom: 2 }}>Mis Pujas</div>
-              <div style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: '#64748b', marginBottom: 10 }}>Historial reciente de ofertas</div>
+            {/* Historial Compacto Ajustado */}
+            <div style={{ background: '#0c0f1d', borderRadius: 10, border: '1px solid rgba(0,200,255,0.1)', padding: 10 }}>
+              <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 14, color: '#f0f4f9', marginBottom: 1 }}>Mis Pujas</div>
+              <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, color: '#64748b', marginBottom: 8 }}>Historial reciente</div>
 
-              <div style={{ maxHeight: 520, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ maxHeight: 520, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {userBidHistoryLoading ? (
-                  <div style={{ padding: 10, color: '#64748b', fontFamily: 'JetBrains Mono', fontSize: 11 }}>Cargando...</div>
+                  <div style={{ padding: 8, color: '#64748b', fontFamily: 'JetBrains Mono', fontSize: 10 }}>Cargando...</div>
                 ) : userBidHistory.length > 0 ? (
                   userBidHistory.map((bid: any) => {
                     const rawTitle = bid.title || bid.asset_id || ''
-                    const displayTitle = rawTitle.startsWith('Subasta ') || rawTitle.length > 18 
-                      ? truncateAddress(rawTitle, 7, 5) 
+                    const displayTitle = rawTitle.startsWith('Subasta ') || rawTitle.length > 12 
+                      ? truncateAddress(rawTitle, 5, 3) 
                       : rawTitle
 
                     return (
@@ -925,29 +937,29 @@ export function ClientAuctions() {
                         style={{
                           display: 'flex',
                           alignItems: 'center',
-                          justifyContent: 'space-between',
-                          padding: '6px 8px',
-                          borderRadius: 6,
+                          justify: 'space-between',
+                          padding: '5px 7px',
+                          borderRadius: 4,
                           background: 'rgba(255,255,255,0.02)',
                           border: '1px solid rgba(255,255,255,0.03)'
                         }}
                       >
-                        <div style={{ minWidth: 0, flex: 1, paddingRight: 6 }}>
-                          <div style={{ fontWeight: 600, fontFamily: 'Rajdhani', fontSize: 12, color: '#dde3f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <div style={{ minWidth: 0, flex: 1, paddingRight: 4 }}>
+                          <div style={{ fontWeight: 600, fontFamily: 'Rajdhani', fontSize: 11, color: '#dde3f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {displayTitle}
                           </div>
-                          <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, color: '#64748b' }}>
+                          <div style={{ fontFamily: 'JetBrains Mono', fontSize: 8, color: '#64748b' }}>
                             {bid.created_at ? new Date(bid.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'Sin fecha'}
                           </div>
                         </div>
-                        <div style={{ fontFamily: 'Rajdhani', fontWeight: 800, fontSize: 13, color: '#00c8ff' }}>
+                        <div style={{ fontFamily: 'Rajdhani', fontWeight: 800, fontSize: 12, color: '#00c8ff' }}>
                           ${Number(bid.bid_amount || 0).toFixed(2)}
                         </div>
                       </div>
                     )
                   })
                 ) : (
-                  <div style={{ padding: 10, color: '#64748b', fontFamily: 'JetBrains Mono', fontSize: 11 }}>Sin pujas registradas.</div>
+                  <div style={{ padding: 8, color: '#64748b', fontFamily: 'JetBrains Mono', fontSize: 10 }}>Sin pujas registradas.</div>
                 )}
               </div>
             </div>
