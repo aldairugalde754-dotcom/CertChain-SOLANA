@@ -11,15 +11,27 @@ export function useUmi() {
   const endpoint = import.meta.env.VITE_SOLANA_RPC_URL || SOLANA_ENDPOINT || "https://api.devnet.solana.com";
 
   const umi = useMemo(() => {
-    const umiInstance = createUmi(endpoint)
-      .use(dasApi())
-      .use(mplBubblegum());
+    try {
+      const umiInstance = createUmi(endpoint)
+        .use(dasApi())
+        .use(mplBubblegum());
 
-    if (wallet.connected && wallet.publicKey) {
-      umiInstance.use(walletAdapterIdentity(wallet));
+      if (wallet.connected && wallet.publicKey) {
+        umiInstance.use(walletAdapterIdentity(wallet));
+      }
+
+      return umiInstance;
+    } catch (err) {
+      console.warn('Falló la creación de UMI, usando fallback seguro:', err);
+      const fallback: any = {
+        use: () => fallback,
+        rpc: {
+          getAsset: async () => { throw new Error('UMI no disponible') },
+          getAssetProof: async () => { throw new Error('UMI no disponible') },
+        }
+      };
+      return fallback as any;
     }
-
-    return umiInstance;
   }, [wallet.connected, wallet.publicKey, wallet.adapter, endpoint]);
 
   return umi;

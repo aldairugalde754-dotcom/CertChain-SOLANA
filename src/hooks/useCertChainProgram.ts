@@ -49,11 +49,34 @@ export function useCertChainProgram() {
     try {
       const assetId = new PublicKey(assetIdStr);
       const vendedor = new PublicKey(vendedorStr);
-      const admin = new PublicKey(adminStr);
+      if (!adminStr || String(adminStr).trim() === '') {
+        throw new Error('Registro global no inicializado (admin desconocido)')
+      }
+      let admin: PublicKey
+      try {
+        admin = new PublicKey(adminStr)
+      } catch (pkErr) {
+        throw new Error('Admin publicKey inválida en registro global')
+      }
 
       // Obtener Proof y Metadatos mediante la API DAS de Umi
-      const asset = await umi.rpc.getAsset(umiPublicKey(assetIdStr));
-      const proof = await umi.rpc.getAssetProof(umiPublicKey(assetIdStr));
+      let asset: any
+      let proof: any
+      try {
+        asset = await umi.rpc.getAsset(umiPublicKey(assetIdStr))
+      } catch (umiErr) {
+        throw new Error('No se pudo obtener asset desde UMI: ' + (umiErr?.message || String(umiErr)))
+      }
+      try {
+        proof = await umi.rpc.getAssetProof(umiPublicKey(assetIdStr))
+      } catch (umiErr) {
+        throw new Error('No se pudo obtener proof desde UMI: ' + (umiErr?.message || String(umiErr)))
+      }
+
+      // Validate proof structure
+      if (!proof || !proof.proof || !Array.isArray(proof.proof) || !proof.root || !proof.tree_id || !asset?.compression) {
+        throw new Error('Proof inválida o incompleta para el asset; no se puede ejecutar la transferencia.')
+      }
 
       const root = Array.from(Buffer.from(proof.root, 'hex'));
       const dataHash = Array.from(Buffer.from(asset.compression.data_hash, 'hex'));
@@ -64,11 +87,11 @@ export function useCertChainProgram() {
       const certificado = getCertificadoPda(assetId);
       const registroGlobal = getRegistroPda();
 
-      const remainingAccounts = proof.proof.map((p: string) => ({
+      const remainingAccounts = Array.isArray(proof.proof) ? proof.proof.map((p: string) => ({
         pubkey: new PublicKey(p),
         isSigner: false,
         isWritable: false,
-      }));
+      })) : [];
 
       return await program.methods
         .comprarDirecto(root, dataHash, creatorHash, nonce, index)

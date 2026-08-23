@@ -191,6 +191,10 @@ export default function TransferView(): JSX.Element {
       if (!assetId) throw new Error('No se pudo resolver el asset_id del certificado para la transferencia.')
 
       const assetWithProof = await getAssetWithProof(umi, assetId, { truncateCanopy: true })
+      // Validate assetWithProof shape
+      if (!assetWithProof || !assetWithProof.root || !assetWithProof.dataHash || !assetWithProof.creatorHash || assetWithProof.nonce === undefined || assetWithProof.index === undefined || !assetWithProof.proof) {
+        throw new Error('Asset proof inválido o incompleto; no se puede proceder con la transferencia.')
+      }
       const currentOwner = umi.identity.publicKey
       const merkleTreePubkey = assetWithProof.merkleTree.toString()
 
@@ -206,7 +210,7 @@ export default function TransferView(): JSX.Element {
           creatorHash: assetWithProof.creatorHash,
           nonce: assetWithProof.nonce,
           index: assetWithProof.index,
-          proof: assetWithProof.proof,
+          proof: Array.isArray(assetWithProof.proof) ? assetWithProof.proof : [],
         })
       } catch (txErr: any) {
         console.error('Bubblegum transfer error:', txErr)
