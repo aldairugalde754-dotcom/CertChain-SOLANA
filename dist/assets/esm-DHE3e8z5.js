@@ -1,1 +1,0 @@
-import{c as e,s as t}from"./index-B3SpA7kr.js";export{t as createUmi,e as defaultPlugins};

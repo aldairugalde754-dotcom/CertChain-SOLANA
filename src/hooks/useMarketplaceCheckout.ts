@@ -3,9 +3,22 @@ import { useWallet } from '@solana/wallet-adapter-react'
 import { Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js'
 import { API_BASE_URL } from '../config'
 import { useCertChainProgram } from './useCertChainProgram'
+import { triggerDataRefresh } from '../utils/dataRefresh'
 
 const RPC_URL = process.env.VITE_SOLANA_RPC_URL || 'https://api.devnet.solana.com'
-const SOL_USD_RATE = 600
+
+async function fetchSolUsdRate(): Promise<number> {
+  try {
+    const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd')
+    if (res.ok) {
+      const data = await res.json()
+      if (data?.solana?.usd) return Number(data.solana.usd)
+    }
+  } catch (e) {
+    // fallback
+  }
+  return 150 // Fallback SOL/USD rate
+}
 
 export function useMarketplaceCheckout() {
   const { publicKey, sendTransaction } = useWallet()
@@ -31,6 +44,7 @@ export function useMarketplaceCheckout() {
 
     try {
       const connection = new Connection(RPC_URL, 'confirmed')
+      const solUsdRate = await fetchSolUsdRate()
 
       for (const item of items) {
         // Obtener info del listing
@@ -44,19 +58,17 @@ export function useMarketplaceCheckout() {
           throw new Error(`Vendedor no encontrado para asset ${item.id}`)
         }
 
-        // Calcular pago en SOL
-        const priceUSD = Number(item.price || listing.price_usd || 0)
-        const solAmount = priceUSD / SOL_USD_RATE
-        const lamports = Math.ceil(solAmount * LAMPORTS_PER_SOL)
+        // Calcular precio exacto en SOL en función del precio total en USD
+        const priceUSD = totalUSD && totalUSD > 0 ? (totalUSD / items.length) : Number(item.price || listing.price_usd || 0)
+        const solAmount = priceUSD / solUsdRate
+        const lamports = Math.max(Math.ceil(solAmount * LAMPORTS_PER_SOL), 1000)
         const sellerPubkey = new PublicKey(listing.seller_wallet)
 
         let paymentSignature: string | null = null
 
-        // If the Anchor program is available, call comprarDirecto to perform
-        // the SOL transfers and the Bubblegum CPI transfer atomically.
+        // If the Anchor program is available and registro_global exists, call comprarDirecto CPI.
         if (comprarDirectoCpi && program && getRegistroPda) {
           try {
-            // Fetch registro_global to obtain admin pubkey required by the instruction
             let adminPub = ''
             let registroExists = false
             try {
@@ -65,27 +77,23 @@ export function useMarketplaceCheckout() {
               adminPub = registroData?.admin?.toString() || ''
               registroExists = true
             } catch (e) {
-              // registro_global not found or unreadable on this network
-              console.warn('registro_global no disponible, se usará fallback a transferencia simple:', e)
               registroExists = false
             }
 
             if (!registroExists) {
-              // Fallback to simple transfer if the on-chain registro is not initialized
               const recentBlockhash = (await connection.getLatestBlockhash()).blockhash
               const paymentTx = new Transaction({ recentBlockhash, feePayer: publicKey }).add(
                 SystemProgram.transfer({ fromPubkey: publicKey, toPubkey: sellerPubkey, lamports })
               )
               paymentSignature = await sendTransaction(paymentTx, connection)
               await connection.confirmTransaction(paymentSignature, 'confirmed')
-              console.log('Fallback pago simple realizado porque registro_global no existe:', paymentSignature)
+              console.log('Pago simple SOL realizado:', paymentSignature)
             } else {
               paymentSignature = await comprarDirectoCpi({ assetIdStr: String(item.id), vendedorStr: listing.seller_wallet, adminStr: adminPub })
               console.log('Compra directa on-chain completada:', paymentSignature)
             }
           } catch (cpiErr: any) {
-            // Fallback: intentar envío simple de transfer si CPI falla
-            console.warn('comprarDirectoCpi falló, intentando transferencia simple:', cpiErr?.message || cpiErr)
+            console.warn('comprarDirectoCpi falló, ejecutando transferencia directa de SOL:', cpiErr?.message || cpiErr)
             const recentBlockhash = (await connection.getLatestBlockhash()).blockhash
             const paymentTx = new Transaction({ recentBlockhash, feePayer: publicKey }).add(
               SystemProgram.transfer({ fromPubkey: publicKey, toPubkey: sellerPubkey, lamports })
@@ -94,7 +102,7 @@ export function useMarketplaceCheckout() {
             await connection.confirmTransaction(paymentSignature, 'confirmed')
           }
         } else {
-          // No hay programa disponible: enviar transferencia directa a vendedor
+          // No hay programa disponible: enviar transferencia directa de SOL
           const recentBlockhash = (await connection.getLatestBlockhash()).blockhash
           const paymentTx = new Transaction({ recentBlockhash, feePayer: publicKey }).add(
             SystemProgram.transfer({ fromPubkey: publicKey, toPubkey: sellerPubkey, lamports })
@@ -108,7 +116,7 @@ export function useMarketplaceCheckout() {
           }
         }
 
-        // Registrar compra en backend
+        // Registrar compra en backend y ejecutar transferencia de cNFT on-chain
         try {
           const buyRes = await fetch(`${API_BASE_URL}/api/marketplace/buy`, {
             method: 'POST',
@@ -126,12 +134,13 @@ export function useMarketplaceCheckout() {
           }
 
           const result = await buyRes.json()
-          console.log('Compra registrada:', result)
+          console.log('Compra registrada y transferida:', result)
         } catch (bdErr: any) {
           throw new Error(`Fallo registro: ${bdErr?.message}`)
         }
       }
 
+      triggerDataRefresh('all')
       setSuccess(true)
       return true
     } catch (err: any) {

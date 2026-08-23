@@ -10,6 +10,11 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { uploadImageToIPFS, uploadMetadataToIPFS } from './pinataService.js';
+import { createUmi } from '@metaplex-foundation/umi-bundle-defaults';
+import { dasApi } from '@metaplex-foundation/digital-asset-standard-api';
+import { mplBubblegum, transfer as bubblegumTransfer, getAssetWithProof } from '@metaplex-foundation/mpl-bubblegum';
+import { keypairIdentity, publicKey as umiPublicKey } from '@metaplex-foundation/umi';
+import { fromWeb3JsKeypair } from '@metaplex-foundation/umi-web3js-adapters';
 
 // Imports de Solana nativos (Estos sí soportan ESM perfectamente)
 import { Connection, PublicKey, Transaction, Keypair, sendAndConfirmTransaction, TransactionInstruction } from '@solana/web3.js';
@@ -1668,6 +1673,55 @@ app.delete('/api/marketplace/list/:assetId', async (req, res) => {
   }
 });
 
+async function transferCnftOnChain(assetIdStr, buyerWalletStr) {
+  if (!process.env.COMPANY_PRIVATE_KEY) {
+    console.warn('COMPANY_PRIVATE_KEY no está configurado en el backend. Omitiendo transferencia cNFT on-chain.');
+    return null;
+  }
+
+  try {
+    const rpcUrl = DAS_RPC_URL || process.env.SOLANA_RPC_URL || 'https://api.devnet.solana.com';
+    const umi = createUmi(rpcUrl).use(mplBubblegum()).use(dasApi());
+
+    const companySecretKey = bs58.decode(process.env.COMPANY_PRIVATE_KEY);
+    const companyKeypair = Keypair.fromSecretKey(companySecretKey);
+    const umiKeypair = fromWeb3JsKeypair(companyKeypair);
+    umi.use(keypairIdentity(umiKeypair));
+
+    const assetId = umiPublicKey(assetIdStr);
+    const buyer = umiPublicKey(buyerWalletStr);
+
+    console.log(`[ON-CHAIN] Obteniendo proof para cNFT ${assetIdStr}...`);
+    const assetWithProof = await getAssetWithProof(umi, assetId, { truncateCanopy: true });
+
+    if (assetWithProof.leafOwner.toString() === buyerWalletStr) {
+      console.log(`[ON-CHAIN] cNFT ${assetIdStr} ya pertenece a ${buyerWalletStr} en blockchain.`);
+      return 'already_owned';
+    }
+
+    console.log(`[ON-CHAIN] Enviando transaccion Bubblegum transfer para ${assetIdStr} de ${assetWithProof.leafOwner.toString()} a ${buyerWalletStr}...`);
+    const txBuilder = await bubblegumTransfer(umi, {
+      leafOwner: umi.identity.publicKey,
+      leafDelegate: umi.identity.publicKey,
+      newLeafOwner: buyer,
+      merkleTree: assetWithProof.merkleTree,
+      root: assetWithProof.root,
+      dataHash: assetWithProof.dataHash,
+      creatorHash: assetWithProof.creatorHash,
+      nonce: assetWithProof.nonce,
+      index: assetWithProof.index,
+      proof: Array.isArray(assetWithProof.proof) ? assetWithProof.proof : [],
+    }).sendAndConfirm(umi, { commitment: 'confirmed' });
+
+    const sig = bs58.encode(txBuilder.signature);
+    console.log(`[ON-CHAIN] ✅ cNFT ${assetIdStr} transferido exitosamente en blockchain a ${buyerWalletStr}. Signature: ${sig}`);
+    return sig;
+  } catch (err) {
+    console.error(`[ON-CHAIN] ❌ Error transfiriendo cNFT ${assetIdStr} en backend:`, err.message || err);
+    return null;
+  }
+}
+
 // Comprar un producto (eliminar de marketplace y transferir propiedad en BD)
 app.post('/api/marketplace/buy', async (req, res) => {
   try {
@@ -1726,9 +1780,17 @@ app.post('/api/marketplace/buy', async (req, res) => {
         [buyer_wallet, cert.id]
       );
       
-      console.log('Propiedad transferida: from=' + previousOwner + ', to=' + buyer_wallet);
+      console.log('Propiedad transferida en BD: from=' + previousOwner + ', to=' + buyer_wallet);
     } else {
       console.warn('Advertencia: Certificado no encontrado para asset_id=' + asset_id);
+    }
+
+    // 6. Transferir cNFT on-chain en Solana via Bubblegum
+    let onChainTx = null;
+    try {
+      onChainTx = await transferCnftOnChain(asset_id, buyer_wallet);
+    } catch (onChainErr) {
+      console.warn('Advertencia: No se completó la transferencia on-chain:', onChainErr.message || onChainErr);
     }
 
     res.json({
@@ -1738,7 +1800,8 @@ app.post('/api/marketplace/buy', async (req, res) => {
       buyer_wallet,
       seller_wallet: listing.seller_wallet,
       price_usd: listing.price_usd,
-      tx_hash: saleRecordTx
+      tx_hash: saleRecordTx,
+      on_chain_tx: onChainTx
     });
   } catch (err) {
     console.error('POST /api/marketplace/buy error', err);
