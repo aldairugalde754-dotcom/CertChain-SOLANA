@@ -30,29 +30,69 @@ function resolveMetadataAttributes(asset: DasAsset) {
   return Array.isArray(list) ? list : []
 }
 
-function buildTimeline(asset: DasAsset, signatures: any[] = [], companyName?: string, ownerWallet?: string) {
+function buildTimeline(
+  asset: DasAsset,
+  signatures: any[] = [],
+  companyName?: string,
+  ownerWallet?: string,
+  backendHistory: any[] = []
+) {
   const creatorWallet = resolveCreatorWallet(asset)
   const currentOwner = ownerWallet || asset?.ownership?.owner || asset?.owner || 'Desconocido'
-  const events: any[] = [
-    {
+  const events: any[] = []
+
+  if (Array.isArray(backendHistory) && backendHistory.length > 0) {
+    backendHistory.forEach((ev: any, idx: number) => {
+      if (ev.type === 'mint') {
+        events.push({
+          title: companyName ? `Certificado emitido por ${companyName}` : (ev.from ? `Certificado emitido por ${ev.from}` : 'Certificado emitido'),
+          subtitle: creatorWallet ? `Wallet del emisor: ${shortAddr(creatorWallet)}` : `Propietario inicial: ${shortAddr(ev.to)}`,
+          date: ev.created_at ? new Date(ev.created_at).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' }) : 'Origen / Mint',
+          tx: ev.tx_hash ? `Tx: ${ev.tx_hash}` : (creatorWallet || 'mint'),
+          type: 'origin',
+        })
+      } else {
+        const titleMap: Record<string, string> = {
+          marketplace_sale: 'Venta en Marketplace',
+          auction_sale: 'Ganador de Subasta / Reclamación',
+          transfer: 'Transferencia Directa',
+          guarantee: 'Transferencia por Garantía',
+          donation: 'Transferencia por Donación'
+        }
+        const title = titleMap[ev.type] || ev.title || 'Transferencia de Custodia'
+        const subtitle = ev.from && ev.to
+          ? `De ${shortAddr(ev.from)} ➔ ${shortAddr(ev.to)}`
+          : (ev.to ? `Transferido a ${shortAddr(ev.to)}` : 'Movimiento de propiedad')
+
+        events.push({
+          title,
+          subtitle,
+          date: ev.created_at ? new Date(ev.created_at).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' }) : `Transferencia #${idx}`,
+          tx: ev.tx_hash ? `Tx: ${ev.tx_hash}` : 'Registro de movimiento en la blockchain',
+          type: 'transfer',
+        })
+      }
+    })
+  } else {
+    events.push({
       title: companyName ? `Certificado emitido por ${companyName}` : 'Certificado emitido',
       subtitle: creatorWallet ? `Wallet del emisor: ${shortAddr(creatorWallet)}` : 'Emisor registrado en blockchain',
       date: 'Origen / Mint',
       tx: creatorWallet || 'mint',
       type: 'origin',
-    },
-  ]
-
-  if (Array.isArray(signatures) && signatures.length > 0) {
-    signatures.slice().reverse().slice(0, 3).forEach((sig: any) => {
-      events.push({
-        title: sig?.type || 'Transferencia',
-        subtitle: sig?.signature ? `Tx: ${sig.signature}` : 'Registro de movimiento en la blockchain',
-        date: sig?.blockTime ? new Date(sig.blockTime * 1000).toLocaleString() : 'Blockchain',
-        tx: sig?.signature || 'tx',
-        type: 'transfer',
-      })
     })
+
+    if (Array.isArray(signatures) && signatures.length > 0) {
+      signatures.slice().reverse().forEach((sig: any) => {
+        events.push({
+          title: sig?.type || 'Transferencia On-Chain',
+          subtitle: sig?.signature ? `Tx: ${shortAddr(sig.signature)}` : 'Registro de movimiento en la blockchain',
+          date: sig?.blockTime ? new Date(sig.blockTime * 1000).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' }) : 'Blockchain',
+          tx: sig?.signature || 'tx',
+          type: 'transfer',
+        })
+      })
+    }
   }
 
   events.push({
@@ -145,7 +185,7 @@ export default function TraceabilityView({ assetId: assetIdProp }: { assetId?: s
     setEvents([])
 
     try {
-      const [assetRes, sigsRes] = await Promise.all([
+      const [assetRes, sigsRes, historyRes] = await Promise.all([
         fetch(DAS_RPC_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -156,6 +196,7 @@ export default function TraceabilityView({ assetId: assetIdProp }: { assetId?: s
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ jsonrpc: '2.0', id: 'trace-get-sigs', method: 'getSignaturesForAsset', params: { id } }),
         }),
+        fetch(`${API_BASE_URL}/api/certificates/history/${encodeURIComponent(id)}`).catch(() => null),
       ])
 
       if (!assetRes.ok) throw new Error('Error al consultar la blockchain')
@@ -166,6 +207,9 @@ export default function TraceabilityView({ assetId: assetIdProp }: { assetId?: s
 
       const sigsJson = sigsRes.ok ? await sigsRes.json() : null
       const signatures = Array.isArray(sigsJson?.result) ? sigsJson.result : []
+      const historyJson = historyRes && historyRes.ok ? await historyRes.json().catch(() => null) : null
+      const backendHistory = Array.isArray(historyJson?.history) ? historyJson.history : []
+
       const ownerWallet = resultAsset?.ownership?.owner || resultAsset?.owner || resultAsset?.ownership?.currentOwner || null
       const creatorWallet = resolveCreatorWallet(resultAsset)
 
@@ -186,7 +230,7 @@ export default function TraceabilityView({ assetId: assetIdProp }: { assetId?: s
 
       setAsset(resultAsset)
       setCompany(verifiedCompany)
-      setEvents(buildTimeline(resultAsset, signatures, verifiedCompany?.company_name, ownerWallet))
+      setEvents(buildTimeline(resultAsset, signatures, verifiedCompany?.company_name, ownerWallet, backendHistory))
     } catch (err: any) {
       setError(err?.message || 'Error al consultar el certificado')
       setAsset(null)

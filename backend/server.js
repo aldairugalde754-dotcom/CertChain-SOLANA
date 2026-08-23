@@ -1005,6 +1005,132 @@ app.patch('/api/certificates/:id', async (req, res) => {
   }
 });
 
+// Registrar transferencia de certificado
+app.post('/api/certificates/transfer', async (req, res) => {
+  try {
+    const { asset_id, previous_owner, new_owner, transfer_type, tx_hash } = req.body;
+    if (!asset_id || !new_owner) {
+      return res.status(400).json({ error: 'asset_id y new_owner son requeridos' });
+    }
+
+    try {
+      await db.execute(
+        'INSERT INTO certificate_transfers (asset_id, previous_owner, new_owner, transfer_type, tx_hash) VALUES (?, ?, ?, ?, ?)',
+        [asset_id, previous_owner || 'Desconocido', new_owner, transfer_type || 'transfer', tx_hash || null]
+      );
+    } catch (e) {
+      console.warn('Advertencia: No se pudo insertar certificate_transfers:', e.message);
+    }
+
+    await db.execute('UPDATE certificates SET owner_wallet = ? WHERE asset_id = ? OR id = ?', [new_owner, asset_id, asset_id]);
+
+    res.json({ success: true, message: 'Transferencia registrada exitosamente' });
+  } catch (err) {
+    console.error('POST /api/certificates/transfer error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Obtener historial completo de trazabilidad (Cadena de Custodia)
+app.get('/api/certificates/history/:assetId', async (req, res) => {
+  try {
+    const { assetId } = req.params;
+
+    // 1. Datos del certificado
+    const [certs] = await db.execute('SELECT * FROM certificates WHERE asset_id = ? OR id = ?', [assetId, assetId]);
+    const cert = certs && certs.length > 0 ? certs[0] : null;
+
+    // 2. Transferencias directas registradas
+    const [transfers] = await db.execute(
+      'SELECT * FROM certificate_transfers WHERE asset_id = ? ORDER BY created_at ASC',
+      [assetId]
+    );
+
+    // 3. Ventas en marketplace
+    const [mSales] = await db.execute(
+      'SELECT * FROM marketplace_sales WHERE asset_id = ? ORDER BY created_at ASC',
+      [assetId]
+    );
+
+    // 4. Ventas en subastas
+    const [aSales] = await db.execute(
+      'SELECT * FROM auction_sales WHERE asset_id = ? ORDER BY created_at ASC',
+      [assetId]
+    );
+
+    const history = [];
+
+    // Evento de emisión inicial (Mint)
+    if (cert) {
+      history.push({
+        type: 'mint',
+        title: cert.company_name ? `Certificado emitido por ${cert.company_name}` : 'Certificado emitido',
+        from: cert.company_name || 'Emisor CertChain',
+        to: cert.owner_wallet || cert.user_wallet,
+        tx_hash: cert.blockchain_tx || cert.tx_hash || null,
+        created_at: cert.created_at
+      });
+    }
+
+    const txHashesSeen = new Set();
+    if (cert?.blockchain_tx) txHashesSeen.add(cert.blockchain_tx);
+
+    const allEvents = [];
+
+    for (const t of transfers) {
+      if (t.tx_hash && txHashesSeen.has(t.tx_hash)) continue;
+      if (t.tx_hash) txHashesSeen.add(t.tx_hash);
+      allEvents.push({
+        type: t.transfer_type || 'transfer',
+        title: t.transfer_type === 'marketplace_sale' ? 'Venta en Marketplace' : (t.transfer_type === 'auction_sale' ? 'Reclamación de Subasta' : 'Transferencia Directa'),
+        from: t.previous_owner,
+        to: t.new_owner,
+        tx_hash: t.tx_hash,
+        created_at: t.created_at
+      });
+    }
+
+    for (const m of mSales) {
+      if (m.tx_hash && txHashesSeen.has(m.tx_hash)) continue;
+      if (m.tx_hash) txHashesSeen.add(m.tx_hash);
+      allEvents.push({
+        type: 'marketplace_sale',
+        title: 'Venta en Marketplace',
+        from: m.seller_wallet,
+        to: m.buyer_wallet,
+        price_usd: m.price_usd,
+        tx_hash: m.tx_hash,
+        created_at: m.created_at
+      });
+    }
+
+    for (const a of aSales) {
+      if (a.tx_hash && txHashesSeen.has(a.tx_hash)) continue;
+      if (a.tx_hash) txHashesSeen.add(a.tx_hash);
+      allEvents.push({
+        type: 'auction_sale',
+        title: 'Reclamación de Subasta',
+        from: a.seller_wallet,
+        to: a.buyer_wallet,
+        price_usd: a.price_usd,
+        tx_hash: a.tx_hash,
+        created_at: a.created_at
+      });
+    }
+
+    allEvents.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+    res.json({
+      asset_id: assetId,
+      certificate: cert,
+      history: [...history, ...allEvents]
+    });
+  } catch (err) {
+    console.error('GET /api/certificates/history error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // ==========================================
 // MARKETPLACE Y TABLAS BD: auto-creación y endpoints
@@ -1140,6 +1266,19 @@ async function ensureDatabaseTables() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         KEY idx_auction_sales_asset (asset_id),
         KEY idx_auction_sales_buyer (buyer_wallet, created_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS certificate_transfers (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        asset_id VARCHAR(255) NOT NULL,
+        previous_owner VARCHAR(128) NOT NULL,
+        new_owner VARCHAR(128) NOT NULL,
+        transfer_type VARCHAR(50) DEFAULT 'transfer',
+        tx_hash VARCHAR(128),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_cert_transfers_asset (asset_id),
+        KEY idx_cert_transfers_new_owner (new_owner)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
     console.log('Tablas de MySQL verificadas / creadas exitosamente.');
@@ -1476,6 +1615,16 @@ app.post('/api/auctions/claim', async (req, res) => {
     // Remove listing
     await db.execute('DELETE FROM auction_listings WHERE asset_id = ?', [asset_id]);
 
+    // Record auction transfer
+    try {
+      await db.execute(
+        'INSERT INTO certificate_transfers (asset_id, previous_owner, new_owner, transfer_type, tx_hash) VALUES (?, ?, ?, ?, ?)',
+        [asset_id, auction.seller_wallet, buyer_wallet, 'auction_sale', tx_hash || null]
+      );
+    } catch (e) {
+      console.warn('Warning: Could not insert certificate_transfers:', e.message || e);
+    }
+
     // Update certificate owner off-chain if exists
     try {
       const [certCheck] = await db.execute('SELECT id, owner_wallet FROM certificates WHERE asset_id = ? OR id = ?', [asset_id, asset_id]);
@@ -1790,6 +1939,16 @@ app.post('/api/marketplace/buy', async (req, res) => {
       console.log('Propiedad transferida en BD: from=' + previousOwner + ', to=' + buyer_wallet);
     } else {
       console.warn('Advertencia: Certificado no encontrado para asset_id=' + asset_id);
+    }
+
+    // Registrar en certificate_transfers
+    try {
+      await db.execute(
+        'INSERT INTO certificate_transfers (asset_id, previous_owner, new_owner, transfer_type, tx_hash) VALUES (?, ?, ?, ?, ?)',
+        [asset_id, listing.seller_wallet, buyer_wallet, 'marketplace_sale', saleRecordTx]
+      );
+    } catch (e) {
+      console.warn('Advertencia: No se pudo registrar en certificate_transfers:', e.message);
     }
 
     // 6. Transferir cNFT on-chain en Solana via Bubblegum
