@@ -95,6 +95,18 @@ function buildTimeline(
     }
   }
 
+  // Si el propietario actual difiere del emisor original y no hay transferencias intermedias explícitas, inferir el paso
+  const hasTransferEvent = events.some(e => e.type === 'transfer')
+  if (!hasTransferEvent && creatorWallet && currentOwner && creatorWallet !== currentOwner && currentOwner !== 'Desconocido') {
+    events.push({
+      title: 'Transferencia de Custodia',
+      subtitle: `De ${shortAddr(creatorWallet)} ➔ ${shortAddr(currentOwner)}`,
+      date: 'Movimiento On-Chain',
+      tx: 'Registro de transferencia en la blockchain',
+      type: 'transfer',
+    })
+  }
+
   events.push({
     title: 'Estado actual',
     subtitle: `En posesión de ${shortAddr(currentOwner)}`,

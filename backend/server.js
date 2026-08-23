@@ -1033,40 +1033,73 @@ app.post('/api/certificates/transfer', async (req, res) => {
 
 // Obtener historial completo de trazabilidad (Cadena de Custodia)
 app.get('/api/certificates/history/:assetId', async (req, res) => {
+  const { assetId } = req.params;
   try {
-    const { assetId } = req.params;
+    // Asegurar tabla certificate_transfers al vuelo
+    try {
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS certificate_transfers (
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          asset_id VARCHAR(255) NOT NULL,
+          previous_owner VARCHAR(128) NOT NULL,
+          new_owner VARCHAR(128) NOT NULL,
+          transfer_type VARCHAR(50) DEFAULT 'transfer',
+          tx_hash VARCHAR(128),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          KEY idx_cert_transfers_asset (asset_id),
+          KEY idx_cert_transfers_new_owner (new_owner)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+      `);
+    } catch (e) {
+      console.warn('Could not ensure certificate_transfers table in history endpoint:', e.message);
+    }
 
     // 1. Datos del certificado
-    const [certs] = await db.execute('SELECT * FROM certificates WHERE asset_id = ? OR id = ?', [assetId, assetId]);
-    const cert = certs && certs.length > 0 ? certs[0] : null;
+    let cert = null;
+    try {
+      const [certs] = await db.execute('SELECT * FROM certificates WHERE asset_id = ? OR id = ?', [assetId, assetId]);
+      cert = certs && certs.length > 0 ? certs[0] : null;
+    } catch (e) {
+      console.warn('Error fetching cert in history endpoint:', e.message);
+    }
 
     // 2. Transferencias directas registradas
-    const [transfers] = await db.execute(
-      'SELECT * FROM certificate_transfers WHERE asset_id = ? ORDER BY created_at ASC',
-      [assetId]
-    );
+    let transfers = [];
+    try {
+      const [rows] = await db.execute('SELECT * FROM certificate_transfers WHERE asset_id = ? ORDER BY created_at ASC', [assetId]);
+      transfers = Array.isArray(rows) ? rows : [];
+    } catch (e) {
+      console.warn('Error fetching transfers in history endpoint:', e.message);
+    }
 
     // 3. Ventas en marketplace
-    const [mSales] = await db.execute(
-      'SELECT * FROM marketplace_sales WHERE asset_id = ? ORDER BY created_at ASC',
-      [assetId]
-    );
+    let mSales = [];
+    try {
+      const [rows] = await db.execute('SELECT * FROM marketplace_sales WHERE asset_id = ? ORDER BY created_at ASC', [assetId]);
+      mSales = Array.isArray(rows) ? rows : [];
+    } catch (e) {
+      console.warn('Error fetching mSales in history endpoint:', e.message);
+    }
 
     // 4. Ventas en subastas
-    const [aSales] = await db.execute(
-      'SELECT * FROM auction_sales WHERE asset_id = ? ORDER BY created_at ASC',
-      [assetId]
-    );
+    let aSales = [];
+    try {
+      const [rows] = await db.execute('SELECT * FROM auction_sales WHERE asset_id = ? ORDER BY created_at ASC', [assetId]);
+      aSales = Array.isArray(rows) ? rows : [];
+    } catch (e) {
+      console.warn('Error fetching aSales in history endpoint:', e.message);
+    }
 
     const history = [];
 
     // Evento de emisión inicial (Mint)
+    const emisorWallet = cert?.company_wallet || cert?.user_wallet || cert?.owner_wallet || null;
     if (cert) {
       history.push({
         type: 'mint',
         title: cert.company_name ? `Certificado emitido por ${cert.company_name}` : 'Certificado emitido',
         from: cert.company_name || 'Emisor CertChain',
-        to: cert.owner_wallet || cert.user_wallet,
+        to: emisorWallet,
         tx_hash: cert.blockchain_tx || cert.tx_hash || null,
         created_at: cert.created_at
       });
@@ -1118,6 +1151,18 @@ app.get('/api/certificates/history/:assetId', async (req, res) => {
       });
     }
 
+    // Si la propiedad cambió y no hay eventos registrados explícitos, inferir la transferencia
+    if (cert && cert.owner_wallet && emisorWallet && cert.owner_wallet !== emisorWallet && allEvents.length === 0) {
+      allEvents.push({
+        type: 'transfer',
+        title: 'Transferencia de Custodia',
+        from: emisorWallet,
+        to: cert.owner_wallet,
+        tx_hash: cert.blockchain_tx || null,
+        created_at: cert.created_at
+      });
+    }
+
     allEvents.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
     res.json({
@@ -1127,7 +1172,7 @@ app.get('/api/certificates/history/:assetId', async (req, res) => {
     });
   } catch (err) {
     console.error('GET /api/certificates/history error:', err);
-    res.status(500).json({ error: err.message });
+    res.json({ asset_id: assetId, history: [] });
   }
 });
 
