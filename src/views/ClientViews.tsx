@@ -415,6 +415,13 @@ function ProductCard({ product, inCart, onAddCart }: { product: any; inCart: boo
 
 // ─── AUCTIONS ─────────────────────────────────────────────────────────────────
 
+// Función auxiliar para formatear direcciones/hashes a "DZr3...mAN"
+function truncateAddress(addr: string, start = 4, end = 3) {
+  if (!addr) return ''
+  if (addr.length <= start + end) return addr
+  return `${addr.slice(0, start)}...${addr.slice(-end)}`
+}
+
 export function ClientAuctions() {
   const { publicKey, sendTransaction } = useWallet()
   const { comprarDirectoCpi, program, getRegistroPda } = useCertChainProgram()
@@ -522,7 +529,7 @@ export function ClientAuctions() {
   const handleBid = async (id: string, assetId?: string, currentPrice?: number) => {
     const amountStr = bidAmount[id]
     if (!amountStr) {
-      setBidValidation(prev => ({ ...prev, [id]: 'Ingresa un monto' }))
+      setBidValidation(prev => ({ ...prev, [id]: 'Ingresa monto' }))
       return
     }
 
@@ -591,7 +598,7 @@ export function ClientAuctions() {
     try {
       setBidError(prev => ({ ...prev, [auctionKey]: '' }))
       const priceUSD = Number(auction.current_bid || auction.highest_bid || auction.price_usd || 0)
-      if (!priceUSD || priceUSD <= 0) throw new Error('Monto de puja no válido')
+      if (!priceUSD || priceUSD <= 0) throw new Error('Monto no válido')
 
       let solUsdRate = 150
       try {
@@ -601,13 +608,13 @@ export function ClientAuctions() {
           if (rateData?.solana?.usd) solUsdRate = Number(rateData.solana.usd)
         }
       } catch (rateErr) {
-        console.warn('Usando tasa SOL por defecto (150)', rateErr)
+        console.warn('Tasa de cambio fallback 150 SOL/USD', rateErr)
       }
 
       const solAmount = priceUSD / solUsdRate
       const lamports = Math.max(Math.ceil(solAmount * LAMPORTS_PER_SOL), 1000)
 
-      if (!auction.seller_wallet) throw new Error('No se encontró wallet vendedora')
+      if (!auction.seller_wallet) throw new Error('Wallet vendedora no encontrada')
       const sellerPubkey = new PublicKey(auction.seller_wallet)
       const rpcUrl = process.env.VITE_SOLANA_RPC_URL || 'https://api.devnet.solana.com'
       const connection = new Connection(rpcUrl, 'confirmed')
@@ -635,7 +642,7 @@ export function ClientAuctions() {
             adminStr: adminPub,
           })
         } catch (cpiErr: any) {
-          console.warn('Fallback a transferencia directa SOL:', cpiErr)
+          console.warn('Fallback a pago directo en SOL', cpiErr)
         }
       }
 
@@ -660,8 +667,8 @@ export function ClientAuctions() {
       })
 
       if (!claimRes.ok) {
-        const claimErrJson = await claimRes.json().catch(() => ({ error: 'Error registrando reclamo' }))
-        throw new Error(claimErrJson.error || 'Error en el reclamo')
+        const claimErrJson = await claimRes.json().catch(() => ({ error: 'Error al reclamar' }))
+        throw new Error(claimErrJson.error || 'Error al reclamar')
       }
 
       triggerDataRefresh('auctions')
@@ -697,9 +704,9 @@ export function ClientAuctions() {
             <div style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: '#8a93b8' }}>Vuelve más tarde o crea una nueva subasta desde tu panel empresarial.</div>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 24, alignItems: 'start' }}>
-            {/* Contenedor de Cards: 3 Columnas Dinámicas */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 310px', gap: 20, alignItems: 'start' }}>
+            {/* Contenedor con máximo 3 cards horizontales por fila */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
               {itemsToDisplay.map((auction: any) => {
                 const idKey = String(auction.id || auction.asset_id || auction._id || '')
                 const certId = getCertificateIdFromAuction(auction)
@@ -715,7 +722,7 @@ export function ClientAuctions() {
                 const bidErrorMsg = bidError[idKey] || ''
                 const validationError = bidValidation[idKey] || ''
                 const isSuccess = bidSuccess[idKey]
-                const shortCertId = formatCertificateId(certId || idKey)
+                const shortCertId = truncateAddress(certId || idKey)
 
                 return (
                   <div
@@ -726,64 +733,120 @@ export function ClientAuctions() {
                       border: `1px solid ${isEnding ? 'rgba(245,158,11,0.3)' : 'rgba(0,200,255,0.12)'}`,
                       borderRadius: 10,
                       overflow: 'hidden',
-                      boxShadow: isEnding ? '0 0 15px rgba(245,158,11,0.08)' : '0 0 15px rgba(0,200,255,0.04)',
+                      boxShadow: '0 4px 18px rgba(0,0,0,0.4)',
                       display: 'flex',
                       flexDirection: 'column'
                     }}
                   >
-                    {/* Imagen y Badges */}
-                    <div style={{ position: 'relative', width: '100%', aspectRatio: '1 / 1', background: '#0a0c18', overflow: 'hidden' }}>
+                    {/* Contenedor de Imagen y Badges */}
+                    <div style={{ position: 'relative', width: '100%', aspectRatio: '1 / 1', background: '#070913', overflow: 'hidden' }}>
                       <img
                         src={imageUrl}
                         alt={title}
                         onError={(e) => { (e.currentTarget as HTMLImageElement).src = DEFAULT_ASSET_IMAGE }}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.95 }}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       />
-                      <div style={{ position: 'absolute', top: 8, left: 8, display: 'flex', gap: 4 }}>
-                        {isEnding ? <Badge color="#f59e0b">Terminando</Badge> : <Badge color="#22c55e">En vivo</Badge>}
+                      
+                      {/* Badge Sólido y Legible */}
+                      <div style={{ position: 'absolute', top: 8, left: 8 }}>
+                        <span style={{
+                          background: isEnding ? '#d97706' : '#16a34a',
+                          color: '#ffffff',
+                          fontWeight: 700,
+                          fontSize: 10,
+                          padding: '3px 8px',
+                          borderRadius: 4,
+                          fontFamily: 'JetBrains Mono',
+                          letterSpacing: '0.05em',
+                          boxShadow: '0 2px 6px rgba(0,0,0,0.6)'
+                        }}>
+                          {isEnding ? 'TERMINANDO' : 'EN VIVO'}
+                        </span>
                       </div>
 
-                      {/* Contador Compacto */}
-                      <div style={{ position: 'absolute', bottom: 6, left: 8, right: 8, background: 'rgba(10, 12, 24, 0.75)', backdropFilter: 'blur(4px)', padding: '4px 6px', borderRadius: 6 }}>
-                        <div style={{ display: 'flex', justifyContent: 'center', gap: 2, alignItems: 'center' }}>
+                      {/* Contador con Máximo Contraste */}
+                      <div style={{ 
+                        position: 'absolute', 
+                        bottom: 8, 
+                        left: 8, 
+                        right: 8, 
+                        background: 'rgba(5, 7, 15, 0.85)', 
+                        backdropFilter: 'blur(6px)', 
+                        padding: '5px 8px', 
+                        borderRadius: 6,
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        boxShadow: '0 4px 10px rgba(0,0,0,0.5)'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'center', gap: 4, alignItems: 'center' }}>
                           {[timeLeftObj.h, timeLeftObj.m, timeLeftObj.s].map((val: string, i: number) => (
                             <span key={`${idKey}-${i}`} style={{ display: 'flex', alignItems: 'center' }}>
-                              <span style={{ fontSize: 13, fontWeight: 700, color: isEnding ? '#f59e0b' : '#00c8ff', fontFamily: 'JetBrains Mono' }}>
+                              <span style={{ 
+                                fontSize: 13, 
+                                fontWeight: 800, 
+                                color: '#00e5ff', 
+                                fontFamily: 'JetBrains Mono',
+                                textShadow: '0 0 8px rgba(0, 229, 255, 0.4)'
+                              }}>
                                 {val}
                               </span>
-                              {i < 2 && <span style={{ color: '#5a6485', fontFamily: 'JetBrains Mono', fontSize: 10, margin: '0 1px' }}>:</span>}
+                              {i < 2 && <span style={{ color: '#64748b', fontFamily: 'JetBrains Mono', fontSize: 11, margin: '0 2px' }}>:</span>}
                             </span>
                           ))}
                         </div>
                       </div>
                     </div>
 
-                    {/* Detalle y Acciones */}
+                    {/* Detalles del Producto y Botón Historial */}
                     <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'space-between' }}>
                       <div>
                         <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 15, color: '#f0f4f9', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {title}
                         </div>
-                        <div style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485', marginBottom: 8 }}>
-                          Cert: <span style={{ color: '#dde3f0' }}>{shortCertId}</span>
+                        
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2, marginBottom: 8 }}>
+                          <div style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: '#64748b' }}>
+                            Cert: <span style={{ color: '#cbd5e1' }}>{shortCertId}</span>
+                          </div>
+                          
+                          {/* Botón Historial Certificado */}
+                          <a 
+                            href={`${window.location.origin}/traceability/${encodeURIComponent(traceId)}`} 
+                            target="_blank" 
+                            rel="noreferrer" 
+                            style={{ textDecoration: 'none' }}
+                          >
+                            <button 
+                              className="btn-ghost" 
+                              style={{ 
+                                padding: '2px 6px', 
+                                fontSize: 9, 
+                                height: 'auto',
+                                fontFamily: 'JetBrains Mono',
+                                border: '1px solid rgba(0,200,255,0.2)',
+                                color: '#00c8ff'
+                              }}
+                            >
+                              Historial ↗
+                            </button>
+                          </a>
                         </div>
 
                         {/* Precios */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 10, padding: '6px 8px', background: 'rgba(0,200,255,0.05)', borderRadius: 6, border: '1px solid rgba(0,200,255,0.08)' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 10, padding: '6px 8px', background: 'rgba(0,200,255,0.04)', borderRadius: 6, border: '1px solid rgba(0,200,255,0.08)' }}>
                           <div>
-                            <div style={{ fontFamily: 'JetBrains Mono', fontSize: 8, color: '#5a6485', textTransform: 'uppercase' }}>Actual</div>
-                            <div style={{ fontFamily: 'Rajdhani', fontWeight: 800, fontSize: 16, color: '#00c8ff' }}>${displayBid}</div>
+                            <div style={{ fontFamily: 'JetBrains Mono', fontSize: 8, color: '#64748b', textTransform: 'uppercase' }}>Actual</div>
+                            <div style={{ fontFamily: 'Rajdhani', fontWeight: 800, fontSize: 15, color: '#00c8ff' }}>${displayBid}</div>
                           </div>
                           <div>
-                            <div style={{ fontFamily: 'JetBrains Mono', fontSize: 8, color: '#5a6485', textTransform: 'uppercase' }}>Siguiente</div>
+                            <div style={{ fontFamily: 'JetBrains Mono', fontSize: 8, color: '#64748b', textTransform: 'uppercase' }}>Mín Siguiente</div>
                             <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 14, color: '#22c55e' }}>${minNextBid.toFixed(2)}</div>
                           </div>
                         </div>
                       </div>
 
-                      {/* Inputs y Botones */}
+                      {/* Inputs de Oferta */}
                       {isSuccess ? (
-                        <div style={{ padding: '8px', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 6, textAlign: 'center', color: '#22c55e', fontSize: 11, fontFamily: 'Rajdhani', fontWeight: 700 }}>
+                        <div style={{ padding: '6px', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 6, textAlign: 'center', color: '#22c55e', fontSize: 11, fontFamily: 'Rajdhani', fontWeight: 700 }}>
                           ✓ PUJA ENVIADA
                         </div>
                       ) : (() => {
@@ -792,7 +855,7 @@ export function ClientAuctions() {
 
                         if (endedLocal && isWinnerLocal) {
                           return (
-                            <button className="btn-accent" style={{ width: '100%', padding: '8px', fontSize: 12 }} onClick={() => handleClaimAuction(auction)}>
+                            <button className="btn-accent" style={{ width: '100%', padding: '6px', fontSize: 11 }} onClick={() => handleClaimAuction(auction)}>
                               RECLAMAR Y PAGAR
                             </button>
                           )
@@ -800,7 +863,7 @@ export function ClientAuctions() {
 
                         return (
                           <div>
-                            <div style={{ display: 'flex', gap: 6 }}>
+                            <div style={{ display: 'flex', gap: 4 }}>
                               <input
                                 className="input-base"
                                 type="number"
@@ -813,7 +876,7 @@ export function ClientAuctions() {
                                 style={{
                                   fontFamily: 'JetBrains Mono',
                                   fontSize: 11,
-                                  padding: '6px 8px',
+                                  padding: '5px 6px',
                                   width: '100%',
                                   border: validationError ? '1px solid #ef4444' : undefined
                                 }}
@@ -821,14 +884,14 @@ export function ClientAuctions() {
                               />
                               <button
                                 className={isEnding ? 'btn-gold' : 'btn-primary'}
-                                style={{ padding: '6px 12px', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}
+                                style={{ padding: '5px 10px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}
                                 onClick={() => handleBid(idKey, auction.asset_id || auction.id, currentBidVal || startingVal)}
                               >
                                 PUJAR
                               </button>
                             </div>
                             {(validationError || bidErrorMsg) && (
-                              <div style={{ fontSize: 10, color: '#ef4444', marginTop: 4, fontFamily: 'JetBrains Mono' }}>
+                              <div style={{ fontSize: 9, color: '#ef4444', marginTop: 4, fontFamily: 'JetBrains Mono' }}>
                                 {validationError || bidErrorMsg}
                               </div>
                             )}
@@ -841,43 +904,50 @@ export function ClientAuctions() {
               })}
             </div>
 
-            {/* Panel Historial Conciso Derecha */}
-            <div style={{ background: '#0c0f1d', borderRadius: 10, border: '1px solid rgba(0,200,255,0.1)', padding: 14 }}>
-              <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 16, color: '#f0f4f9', marginBottom: 2 }}>Mis Pujas</div>
-              <div style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: '#8a93b8', marginBottom: 12 }}>Historial reciente de ofertas</div>
+            {/* Historial Lateral Compacto con Nombres y Wallets Abreviadas */}
+            <div style={{ background: '#0c0f1d', borderRadius: 10, border: '1px solid rgba(0,200,255,0.1)', padding: 12 }}>
+              <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 15, color: '#f0f4f9', marginBottom: 2 }}>Mis Pujas</div>
+              <div style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: '#64748b', marginBottom: 10 }}>Historial reciente de ofertas</div>
 
-              <div style={{ maxHeight: 480, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ maxHeight: 520, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {userBidHistoryLoading ? (
-                  <div style={{ padding: 10, color: '#8a93b8', fontFamily: 'JetBrains Mono', fontSize: 11 }}>Cargando...</div>
+                  <div style={{ padding: 10, color: '#64748b', fontFamily: 'JetBrains Mono', fontSize: 11 }}>Cargando...</div>
                 ) : userBidHistory.length > 0 ? (
-                  userBidHistory.map((bid: any) => (
-                    <div
-                      key={`${bid.asset_id}-${bid.bid_hash || bid.id}`}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justify: 'space-between',
-                        padding: '8px 10px',
-                        borderRadius: 6,
-                        background: 'rgba(255,255,255,0.02)',
-                        border: '1px solid rgba(255,255,255,0.04)'
-                      }}
-                    >
-                      <div style={{ minWidth: 0, flex: 1, paddingRight: 8 }}>
-                        <div style={{ fontWeight: 600, fontFamily: 'Rajdhani', fontSize: 13, color: '#dde3f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {bid.title || `Subasta ${bid.asset_id}`}
+                  userBidHistory.map((bid: any) => {
+                    const rawTitle = bid.title || bid.asset_id || ''
+                    const displayTitle = rawTitle.startsWith('Subasta ') || rawTitle.length > 18 
+                      ? truncateAddress(rawTitle, 7, 5) 
+                      : rawTitle
+
+                    return (
+                      <div
+                        key={`${bid.asset_id}-${bid.bid_hash || bid.id}`}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '6px 8px',
+                          borderRadius: 6,
+                          background: 'rgba(255,255,255,0.02)',
+                          border: '1px solid rgba(255,255,255,0.03)'
+                        }}
+                      >
+                        <div style={{ minWidth: 0, flex: 1, paddingRight: 6 }}>
+                          <div style={{ fontWeight: 600, fontFamily: 'Rajdhani', fontSize: 12, color: '#dde3f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {displayTitle}
+                          </div>
+                          <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, color: '#64748b' }}>
+                            {bid.created_at ? new Date(bid.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'Sin fecha'}
+                          </div>
                         </div>
-                        <div style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485' }}>
-                          {bid.created_at ? new Date(bid.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'Sin fecha'}
+                        <div style={{ fontFamily: 'Rajdhani', fontWeight: 800, fontSize: 13, color: '#00c8ff' }}>
+                          ${Number(bid.bid_amount || 0).toFixed(2)}
                         </div>
                       </div>
-                      <div style={{ fontFamily: 'Rajdhani', fontWeight: 800, fontSize: 14, color: '#00c8ff' }}>
-                        ${Number(bid.bid_amount || 0).toFixed(2)}
-                      </div>
-                    </div>
-                  ))
+                    )
+                  })
                 ) : (
-                  <div style={{ padding: 10, color: '#8a93b8', fontFamily: 'JetBrains Mono', fontSize: 11 }}>Sin pujas registradas.</div>
+                  <div style={{ padding: 10, color: '#64748b', fontFamily: 'JetBrains Mono', fontSize: 11 }}>Sin pujas registradas.</div>
                 )}
               </div>
             </div>
