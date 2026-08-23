@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type FormEvent } from 'react'
 import { useWallet } from '@solana/wallet-adapter-react'
 import { Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js'
-import { Search, ShoppingCart, Heart, TrendingUp, ArrowUpRight, Package, Send, AlertCircle, CheckCircle2, Zap } from 'lucide-react'
+import { Search, ShoppingCart, Heart, TrendingUp, ArrowUpRight, Package, Send, AlertCircle, CheckCircle2, Zap, RefreshCw, Trash2 } from 'lucide-react'
 import { getAssetWithProof, transfer as bubblegumTransfer } from '@metaplex-foundation/mpl-bubblegum'
 import { publicKey as umiPublicKey } from '@metaplex-foundation/umi'
-import { TopBar, StatCard, SectionTitle, Badge, HashDisplay, MOCK_PRODUCTS, MOCK_AUCTIONS } from '../components/Shared'
+import { TopBar, StatCard, SectionTitle, Badge, HashDisplay, MOCK_PRODUCTS } from '../components/Shared'
 import { resolveAssetImage, DEFAULT_ASSET_IMAGE } from '../utils/metadata'
 import { API_BASE_URL, DAS_RPC_URL, DEFAULT_MERKLE_TREE_PUBKEY } from '../config'
 import { useMarketplaceCheckout } from '../hooks/useMarketplaceCheckout'
@@ -30,17 +30,12 @@ function getCertificateIdFromAuction(auction: any) {
   return value ? String(value) : ''
 }
 
-function formatCertificateId(id: string) {
-  if (!id) return 'N/A'
-  return id.length > 16 ? `${id.slice(0, 8)}...${id.slice(-4)}` : id
-}
-
 async function sendBubblegumTransferWithRetry(umi: any, transferInput: any) {
   const attempts = 3
 
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
-      return await bubblegumTransfer(umi, transferInput).sendAndConfirm(umi, { commitment: 'confirmed' })
+      return await bubblegumTransfer(umi, transferInput).sendAndConfirm(umi)
     } catch (txErr: any) {
       const message = txErr?.message || String(txErr)
       const logs = typeof txErr.getLogs === 'function' ? await txErr.getLogs().catch(() => []) : []
@@ -427,7 +422,6 @@ export function ClientAuctions() {
   const [auctions, setAuctions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [bidAmount, setBidAmount] = useState<Record<string, string>>({})
-  const [placedBids, setPlacedBids] = useState<string[]>([])
   const [bidError, setBidError] = useState<Record<string, string>>({})
   const [bidSuccess, setBidSuccess] = useState<Record<string, boolean>>({})
   const [countdowns, setCountdowns] = useState<Record<string, { h: string; m: string; s: string }>>({})
@@ -449,9 +443,16 @@ export function ClientAuctions() {
 
     let mounted = true
     async function fetchUserBidHistory() {
+      const walletAddress = publicKey?.toString()
+      if (!walletAddress) {
+        setUserBidHistory([])
+        setUserBidHistoryLoading(false)
+        return
+      }
+
       setUserBidHistoryLoading(true)
       try {
-        const res = await fetch(`${API_BASE_URL}/api/auctions/my-bids/${publicKey.toString()}`)
+        const res = await fetch(`${API_BASE_URL}/api/auctions/my-bids/${walletAddress}`)
         if (!res.ok) throw new Error('No se pudo cargar el historial')
         const data = await res.json()
         if (mounted) setUserBidHistory(Array.isArray(data) ? data : [])
@@ -568,7 +569,6 @@ export function ClientAuctions() {
           throw new Error(errJson.error || 'Error al enviar puja')
         }
         setBidSuccess(prev => ({ ...prev, [id]: true }))
-        setPlacedBids(prev => [...prev, id])
         setTimeout(() => {
           setBidSuccess(prev => ({ ...prev, [id]: false }))
         }, 3000)
@@ -625,9 +625,12 @@ export function ClientAuctions() {
       try {
         if (program && getRegistroPda) {
           const registroPda = getRegistroPda()
-          const registroData: any = await program.account.registroGlobal.fetch(registroPda)
-          adminPub = registroData?.admin?.toString() || ''
-          registroExists = true
+          const registroAccount = (program.account as any)?.registroGlobal
+          if (registroAccount) {
+            const registroData: any = await registroAccount.fetch(registroPda)
+            adminPub = registroData?.admin?.toString() || ''
+            registroExists = true
+          }
         }
       } catch (e) {
         registroExists = false
@@ -937,7 +940,7 @@ export function ClientAuctions() {
                         style={{
                           display: 'flex',
                           alignItems: 'center',
-                          justify: 'space-between',
+                          justifyContent: 'space-between',
                           padding: '5px 7px',
                           borderRadius: 4,
                           background: 'rgba(255,255,255,0.02)',
@@ -985,7 +988,7 @@ export function ClientHistory() {
   const [searched, setSearched] = useState(false)
   const [loading, setLoading] = useState(false)
 
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSearch = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!query) return
     setLoading(true)
@@ -1335,15 +1338,6 @@ export function ClientWallet() {
 
 // ─── CLIENT TRANSFER / SELL ───────────────────────────────────────────────────
 
-import React, { useState, useEffect } from 'react'
-import { useWallet } from '@solana/wallet-adapter-react'
-import { PublicKey } from '@solana/web3.js'
-import { 
-  CheckCircle2, AlertCircle, Send, TrendingUp, Trash2, Edit2, RefreshCw 
-} from 'lucide-react'
-
-// Asegúrate de tener importados tus helpers, TopBar, SectionTitle, Badge, HashDisplay, etc.
-
 export function ClientTransfer() {
   const { publicKey } = useWallet()
   const umi = useUmi()
@@ -1484,7 +1478,7 @@ export function ClientTransfer() {
   const selectedAssetImage = selectedAsset ? selectedAsset.content?.links?.image || selectedAsset.content?.files?.[0]?.uri || '' : ''
   const selectedAssetName = selectedAsset?.content?.metadata?.name || 'Certificado'
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setError(null)
 
