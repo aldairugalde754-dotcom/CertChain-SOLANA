@@ -12,6 +12,29 @@ import { useUmi } from '../hooks/useUmi'
 import { useCertChainProgram } from '../hooks/useCertChainProgram'
 import { subscribeToDataRefresh, triggerDataRefresh } from '../utils/dataRefresh'
 
+function getCertificateIdFromAuction(auction: any) {
+  if (!auction) return ''
+
+  const candidates = [
+    auction.certificate_id,
+    auction.cert_id,
+    auction.cert_hash,
+    auction.certHash,
+    auction.asset_id,
+    auction.assetId,
+    auction.id,
+    auction._id,
+  ]
+
+  const value = candidates.find((candidate) => candidate !== undefined && candidate !== null && String(candidate).trim() !== '')
+  return value ? String(value) : ''
+}
+
+function formatCertificateId(id: string) {
+  if (!id) return 'N/A'
+  return id.length > 16 ? `${id.slice(0, 8)}...${id.slice(-4)}` : id
+}
+
 async function sendBubblegumTransferWithRetry(umi: any, transferInput: any) {
   const attempts = 3
 
@@ -703,10 +726,12 @@ export function ClientAuctions() {
         ) : (
           <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
             <div style={{ flex: 1 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 20 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(260px, 1fr))', gap: 18, maxWidth: 760 }}>
                 {itemsToDisplay.map((auction: any) => {
                   const idKey = String(auction.id || auction.asset_id || auction._id || '')
-                  const title = auction.title || auction.name || `Certificado ${auction.asset_id || auction.id}`
+                  const certId = getCertificateIdFromAuction(auction)
+                  const traceId = certId || idKey
+                  const title = auction.title || auction.name || `Certificado ${traceId}`
                   const currentBidVal = auction.current_bid !== undefined ? auction.current_bid : auction.currentBid
                   const startingVal = auction.starting_price !== undefined ? auction.starting_price : auction.minBid
                   const displayBid = Number(currentBidVal || startingVal || 0).toFixed(2)
@@ -717,6 +742,7 @@ export function ClientAuctions() {
                   const bidErrorMsg = bidError[idKey] || ''
                   const validationError = bidValidation[idKey] || ''
                   const isSuccess = bidSuccess[idKey]
+                  const shortCertId = formatCertificateId(certId || idKey)
 
                   return (
                     <div
@@ -728,7 +754,9 @@ export function ClientAuctions() {
                         borderRadius: 12,
                         overflow: 'hidden',
                         boxShadow: isEnding ? '0 0 20px rgba(245,158,11,0.1)' : '0 0 20px rgba(0,200,255,0.05)',
-                        transition: 'all 0.3s ease'
+                        transition: 'all 0.3s ease',
+                        maxWidth: 360,
+                        width: '100%'
                       }}
                     >
                       <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0a0c18' }}>
@@ -750,7 +778,7 @@ export function ClientAuctions() {
                           <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, color: '#8a93b8', letterSpacing: '0.08em', marginBottom: 4 }}>TERMINA EN</div>
                           <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
                             {[timeLeftObj.h, timeLeftObj.m, timeLeftObj.s].map((val: string, i: number) => (
-                              <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                              <span key={`${idKey}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
                                 <span
                                   className="countdown-digit"
                                   style={{
@@ -775,16 +803,15 @@ export function ClientAuctions() {
                         </div>
                       </div>
 
-                      <div style={{ padding: '14px 16px' }}>
+                      <div style={{ padding: '12px 14px' }}>
                         <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 16, letterSpacing: '0.03em', marginBottom: 6, color: '#f0f4f9' }}>
                           {title}
                         </div>
 
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                            <div style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485' }}>Certificado</div>
-                            <div style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: '#dde3f0', fontWeight: 600, wordBreak: 'break-all' }}>{idKey || 'N/A'}</div>
-                            <div style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: '#8a93b8', marginLeft: 10 }}>{auction.company || auction.seller_name || (auction.seller_wallet ? String(auction.seller_wallet).slice(0, 6) + '...' : '')}</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, color: '#5a6485' }}>Certificado</div>
+                            <div style={{ fontFamily: 'JetBrains Mono', fontSize: 11, color: '#dde3f0', fontWeight: 600, wordBreak: 'break-all' }}>{shortCertId}</div>
                           </div>
                         </div>
 
@@ -872,7 +899,7 @@ export function ClientAuctions() {
                                   disabled={isEnding && timeLeftObj.h === '00' && timeLeftObj.m === '00' && timeLeftObj.s === '00'}
                                 />
 
-                                <a href={`${window.location.origin}/traceability/${encodeURIComponent(idKey)}`} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
+                                <a href={`${window.location.origin}/traceability/${encodeURIComponent(traceId)}`} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
                                   <button className="btn-ghost" style={{ padding: '8px 10px', fontSize: 11 }}>Historial</button>
                                 </a>
 
@@ -927,20 +954,25 @@ export function ClientAuctions() {
                   <div style={{ padding: 12, color: '#8a93b8', fontFamily: 'JetBrains Mono', fontSize: 12 }}>Cargando historial...</div>
                 ) : userBidHistory.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {userBidHistory.map((bid: any) => (
-                      <div key={`${bid.asset_id}-${bid.bid_hash || bid.id}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 10px', borderRadius: 8, background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.02)' }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 600, fontFamily: 'Rajdhani', fontSize: 13, color: '#dde3f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{bid.title || `Subasta ${bid.asset_id}`}</div>
-                          <div style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: '#8a93b8' }}>{bid.created_at ? new Date(bid.created_at).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' }) : 'Sin fecha'}</div>
+                    {userBidHistory.map((bid: any) => {
+                      const bidCertId = getCertificateIdFromAuction(bid)
+                      const bidTraceId = bidCertId || bid.asset_id || bid.id || ''
+
+                      return (
+                        <div key={`${bid.asset_id}-${bid.bid_hash || bid.id}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 10px', borderRadius: 8, background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.02)' }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, fontFamily: 'Rajdhani', fontSize: 13, color: '#dde3f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{bid.title || `Subasta ${bid.asset_id}`}</div>
+                            <div style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: '#8a93b8' }}>{bid.created_at ? new Date(bid.created_at).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' }) : 'Sin fecha'}</div>
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, marginLeft: 8 }}>
+                            <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, color: '#00c8ff' }}>${Number(bid.bid_amount || 0).toFixed(2)}</div>
+                            <a href={`${window.location.origin}/traceability/${encodeURIComponent(bidTraceId)}`} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
+                              <button className="btn-ghost" style={{ padding: '6px 8px', fontSize: 11 }}>Certificado</button>
+                            </a>
+                          </div>
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, marginLeft: 8 }}>
-                          <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, color: '#00c8ff' }}>${Number(bid.bid_amount || 0).toFixed(2)}</div>
-                          <a href={`${window.location.origin}/traceability/${encodeURIComponent(bid.asset_id)}`} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
-                            <button className="btn-ghost" style={{ padding: '6px 8px', fontSize: 11 }}>Certificado</button>
-                          </a>
-                        </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 ) : (
                   <div style={{ padding: 12, color: '#8a93b8', fontFamily: 'JetBrains Mono', fontSize: 12 }}>No hay pujas registradas.</div>
