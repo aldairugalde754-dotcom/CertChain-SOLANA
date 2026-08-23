@@ -1335,21 +1335,36 @@ export function ClientWallet() {
 
 // ─── CLIENT TRANSFER / SELL ───────────────────────────────────────────────────
 
+import React, { useState, useEffect } from 'react'
+import { useWallet } from '@solana/wallet-adapter-react'
+import { PublicKey } from '@solana/web3.js'
+import { 
+  CheckCircle2, AlertCircle, Send, TrendingUp, Trash2, Edit2, RefreshCw 
+} from 'lucide-react'
+
+// Asegúrate de tener importados tus helpers, TopBar, SectionTitle, Badge, HashDisplay, etc.
+
 export function ClientTransfer() {
   const { publicKey } = useWallet()
   const umi = useUmi()
+  
   const [mode, setMode] = useState<'transfer' | 'sell'>('transfer')
   const [assets, setAssets] = useState<any[]>([])
+  const [myListings, setMyListings] = useState<any[]>([])
+  const [loadingListings, setLoadingListings] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  
   const [selectedNft, setSelectedNft] = useState('')
   const [destination, setDestination] = useState('')
   const [note, setNote] = useState('')
   const [priceUsd, setPriceUsd] = useState('')
   const [description, setDescription] = useState('')
+  
   const [submitted, setSubmitted] = useState(false)
   const [processing, setProcessing] = useState(false)
 
+  // Fetch Wallet Assets
   useEffect(() => {
     let cancelled = false
 
@@ -1425,7 +1440,49 @@ export function ClientTransfer() {
     return () => { cancelled = true }
   }, [publicKey])
 
+  // Fetch My Marketplace Listings
+  const fetchMyListings = async () => {
+    if (!publicKey) return
+    setLoadingListings(true)
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/marketplace/my-listings?seller=${publicKey.toString()}`)
+      if (res.ok) {
+        const data = await res.json()
+        setMyListings(data?.listings || data || [])
+      }
+    } catch (err) {
+      console.warn('Error fetching listings:', err)
+    } finally {
+      setLoadingListings(false)
+    }
+  }
+
+  useEffect(() => {
+    if (mode === 'sell' && publicKey) {
+      fetchMyListings()
+    }
+  }, [mode, publicKey])
+
+  // Eliminar / Cancelar listado del marketplace
+  const handleRemoveListing = async (listingId: string) => {
+    if (!confirm('¿Estás seguro de quitar este artículo del marketplace?')) return
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/marketplace/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ listing_id: listingId, seller_wallet: publicKey?.toString() }),
+      })
+      if (!res.ok) throw new Error('Error al cancelar el listado')
+      fetchMyListings()
+      triggerDataRefresh('marketplace')
+    } catch (err: any) {
+      alert(err.message || 'No se pudo eliminar el artículo.')
+    }
+  }
+
   const selectedAsset = assets.find((asset: any) => String(asset?.id || asset?.assetId) === selectedNft) || null
+  const selectedAssetImage = selectedAsset ? selectedAsset.content?.links?.image || selectedAsset.content?.files?.[0]?.uri || '' : ''
+  const selectedAssetName = selectedAsset?.content?.metadata?.name || 'Certificado'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -1446,7 +1503,6 @@ export function ClientTransfer() {
         setError('Ingresa la wallet del destinatario.')
         return
       }
-
       try {
         new PublicKey(destination.trim())
       } catch {
@@ -1469,9 +1525,7 @@ export function ClientTransfer() {
       if (mode === 'transfer') {
         const destinationPubkey = new PublicKey(destination.trim())
         const assetId = String(selectedAsset.id || selectedAsset.assetId || selectedAsset.mint || '')
-        if (!assetId) {
-          throw new Error('No se pudo resolver el asset_id del certificado para la transferencia.')
-        }
+        if (!assetId) throw new Error('No se pudo resolver el asset_id.')
 
         const assetWithProof = await getAssetWithProof(umi, assetId, { truncateCanopy: true })
         const currentOwner = umi.identity?.publicKey ?? publicKey
@@ -1503,7 +1557,7 @@ export function ClientTransfer() {
             tx_hash: signature,
             note: note || null,
           }),
-        }).catch((err: any) => console.warn('No se pudo notificar al backend la transferencia:', err))
+        }).catch((err: any) => console.warn('No se pudo notificar al backend:', err))
 
         triggerDataRefresh('inventory')
         triggerDataRefresh('marketplace')
@@ -1526,12 +1580,11 @@ export function ClientTransfer() {
         })
 
         const payload = await res.json().catch(() => ({}))
-        if (!res.ok) {
-          throw new Error(payload?.error || 'No se pudo listar el certificado.')
-        }
+        if (!res.ok) throw new Error(payload?.error || 'No se pudo listar el certificado.')
 
         triggerDataRefresh('marketplace')
         triggerDataRefresh('inventory')
+        fetchMyListings()
       }
 
       setSubmitted(true)
@@ -1542,14 +1595,13 @@ export function ClientTransfer() {
     }
   }
 
-  const selectedAssetImage = selectedAsset ? selectedAsset.content?.links?.image || selectedAsset.content?.files?.[0]?.uri || '' : ''
-  const selectedAssetName = selectedAsset?.content?.metadata?.name || 'Certificado'
-
   return (
-    <div style={{ flex: 1, overflow: 'auto' }}>
-      <TopBar title="Transferir / Vender" subtitle="Gestiona tus certificados de propiedad" />
-      <div style={{ padding: '28px 32px', maxWidth: 740 }}>
-        <div style={{ display: 'flex', background: '#0c0f1d', borderRadius: 10, padding: 4, marginBottom: 28, border: '1px solid rgba(0,200,255,0.1)', width: 'fit-content' }}>
+    <div style={{ flex: 1, overflow: 'auto', paddingBottom: 40 }}>
+      <TopBar title="Transferir / Vender" subtitle="Gestiona tus certificados de propiedad y tus publicaciones en el marketplace" />
+      
+      <div style={{ padding: '28px 32px' }}>
+        {/* Selector de Modo */}
+        <div style={{ display: 'flex', background: '#0c0f1d', borderRadius: 10, padding: 4, marginBottom: 24, border: '1px solid rgba(0,200,255,0.1)', width: 'fit-content' }}>
           {(['transfer', 'sell'] as const).map((m) => (
             <button
               key={m}
@@ -1568,190 +1620,295 @@ export function ClientTransfer() {
           ))}
         </div>
 
-        {submitted ? (
-          <div style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: 14, padding: '40px', textAlign: 'center' }}>
-            <CheckCircle2 size={48} color="#22c55e" style={{ marginBottom: 16 }} />
-            <div style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, letterSpacing: '0.04em', color: '#22c55e', marginBottom: 8 }}>
-              {mode === 'transfer' ? 'TRANSFERENCIA PREPARADA' : 'PRODUCTO LISTADO'}
-            </div>
-            <div style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: '#5a6485', marginBottom: 20 }}>
-              {mode === 'transfer'
-                ? 'La solicitud de transferencia quedó preparada y lista para confirmarse en tu wallet.'
-                : 'El certificado ya quedó registrado en el marketplace con el precio indicado.'}
-            </div>
-            <HashDisplay hash={selectedAsset ? String(selectedAsset.id || selectedAsset.assetId) : 'transfer'} />
-            <div style={{ marginTop: 20 }}>
-              <button className="btn-ghost" onClick={() => { setSubmitted(false); setDestination(''); setNote(''); setPriceUsd(''); setDescription('') }}>NUEVA OPERACIÓN</button>
-            </div>
-          </div>
-        ) : (
-          <div className="glow-border" style={{ background: '#0c0f1d', borderRadius: 14, padding: '32px' }}>
-            <SectionTitle sub={mode === 'transfer' ? 'Transfiere la propiedad de un cNFT a otro usuario' : 'Lista tu producto en el marketplace para venta'}>
-              {mode === 'transfer' ? 'Transferir Propiedad' : 'Poner en Venta'}
-            </SectionTitle>
-
-            {!publicKey ? (
-              <div style={{ padding: '24px 12px', border: '1px dashed rgba(0,200,255,0.2)', borderRadius: 12, textAlign: 'center', background: 'rgba(0,200,255,0.03)', color: '#8a93b8', fontFamily: 'JetBrains Mono', fontSize: 12 }}>
-                Conecta tu wallet para consultar tu inventario y operar con tus cNFTs.
-              </div>
-            ) : loading ? (
-              <div style={{ padding: '24px', color: '#8a93b8', fontFamily: 'JetBrains Mono', fontSize: 12 }}>Cargando certificados...</div>
-            ) : assets.length === 0 ? (
-              <div style={{ padding: '24px 12px', border: '1px dashed rgba(0,200,255,0.2)', borderRadius: 12, textAlign: 'center', background: 'rgba(0,200,255,0.03)' }}>
-                <div style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, marginBottom: 8, color: '#f0f4f9' }}>No tienes certificados cNFT</div>
-                <div style={{ color: '#8a93b8', fontSize: 13 }}>Cuando poses algún certificado verificado, aparecerá aquí tu inventario.</div>
+        {/* Layout en Grid: Formulario a la Izquierda, Preview a la Derecha */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 24, alignItems: 'start' }}>
+          
+          {/* Panel Izquierdo: Formulario Principal */}
+          <div>
+            {submitted ? (
+              <div style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: 14, padding: '40px', textAlign: 'center' }}>
+                <CheckCircle2 size={48} color="#22c55e" style={{ marginBottom: 16 }} />
+                <div style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, color: '#22c55e', marginBottom: 8 }}>
+                  {mode === 'transfer' ? 'TRANSFERENCIA PREPARADA' : 'PRODUCTO LISTADO'}
+                </div>
+                <div style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: '#5a6485', marginBottom: 20 }}>
+                  {mode === 'transfer'
+                    ? 'La solicitud de transferencia quedó preparada y lista para confirmarse en tu wallet.'
+                    : 'El certificado ya quedó registrado en el marketplace con el precio indicado.'}
+                </div>
+                <HashDisplay hash={selectedAsset ? String(selectedAsset.id || selectedAsset.assetId) : 'transfer'} />
+                <div style={{ marginTop: 20 }}>
+                  <button className="btn-ghost" onClick={() => { setSubmitted(false); setDestination(''); setNote(''); setPriceUsd(''); setDescription('') }}>
+                    NUEVA OPERACIÓN
+                  </button>
+                </div>
               </div>
             ) : (
-              <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-                <div>
-                  <label style={{ display: 'block', fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>
-                    Seleccionar cNFT
-                  </label>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
-                    {assets.map((asset: any) => {
-                      const assetId = String(asset?.id || asset?.assetId || '')
-                      const itemName = asset?.content?.metadata?.name || `Certificado ${assetId.slice(0, 8)}`
-                      const img = asset.content?.links?.image || asset.content?.files?.[0]?.uri || ''
-                      const value = getAssetValue(asset)
+              <div className="glow-border" style={{ background: '#0c0f1d', borderRadius: 14, padding: '28px' }}>
+                <SectionTitle sub={mode === 'transfer' ? 'Transfiere la propiedad de un cNFT a otro usuario' : 'Lista tu producto en el marketplace para venta'}>
+                  {mode === 'transfer' ? 'Transferir Propiedad' : 'Poner en Venta'}
+                </SectionTitle>
 
-                      return (
-                        <button
-                          key={assetId}
-                          type="button"
-                          onClick={() => setSelectedNft(assetId)}
-                          style={{
-                            background: selectedNft === assetId ? 'rgba(0,200,255,0.08)' : 'rgba(0,200,255,0.03)',
-                            border: `1px solid ${selectedNft === assetId ? 'rgba(0,200,255,0.35)' : 'rgba(0,200,255,0.12)'}`,
-                            borderRadius: 10, padding: '12px 14px', cursor: 'pointer', textAlign: 'left',
-                            transition: 'all 0.2s',
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                            <img src={img || DEFAULT_ASSET_IMAGE} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: 'cover' }} />
-                            <div>
-                              <div style={{ fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: '#dde3f0', lineHeight: 1 }}>{itemName}</div>
-                              <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, color: '#5a6485' }}>{assetId.slice(0, 8)}</div>
-                            </div>
-                          </div>
-                          <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 14, color: '#00c8ff' }}>${value.toLocaleString()}</div>
-                        </button>
-                      )
-                    })}
+                {!publicKey ? (
+                  <div style={{ padding: '24px 12px', border: '1px dashed rgba(0,200,255,0.2)', borderRadius: 12, textAlign: 'center', background: 'rgba(0,200,255,0.03)', color: '#8a93b8', fontFamily: 'JetBrains Mono', fontSize: 12 }}>
+                    Conecta tu wallet para consultar tu inventario y operar con tus cNFTs.
                   </div>
-                </div>
-
-                {mode === 'transfer' ? (
-                  <>
-                    <div>
-                      <label style={{ display: 'block', fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 6 }}>
-                        Dirección del Destinatario
-                      </label>
-                      <input
-                        className="input-base"
-                        value={destination}
-                        onChange={(e) => setDestination(e.target.value)}
-                        placeholder="0x742d35Cc6634C0532925a3b8D4C9..."
-                        style={{ fontFamily: 'JetBrains Mono', fontSize: 12 }}
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 6 }}>
-                        Nota (opcional)
-                      </label>
-                      <textarea
-                        className="input-base"
-                        value={note}
-                        onChange={(e) => setNote(e.target.value)}
-                        placeholder="Mensaje para el destinatario..."
-                        rows={3}
-                        style={{ resize: 'none' }}
-                      />
-                    </div>
-                  </>
+                ) : loading ? (
+                  <div style={{ padding: '24px', color: '#8a93b8', fontFamily: 'JetBrains Mono', fontSize: 12 }}>Cargando certificados...</div>
+                ) : assets.length === 0 ? (
+                  <div style={{ padding: '24px 12px', border: '1px dashed rgba(0,200,255,0.2)', borderRadius: 12, textAlign: 'center', background: 'rgba(0,200,255,0.03)' }}>
+                    <div style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, marginBottom: 8, color: '#f0f4f9' }}>No tienes certificados cNFT</div>
+                    <div style={{ color: '#8a93b8', fontSize: 13 }}>Cuando poseas algún certificado verificado, aparecerá aquí tu inventario.</div>
+                  </div>
                 ) : (
-                  <>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                      <div>
-                        <label style={{ display: 'block', fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 6 }}>
-                          Precio de venta (USD)
-                        </label>
-                        <input
-                          className="input-base"
-                          type="number"
-                          value={priceUsd}
-                          onChange={(e) => setPriceUsd(e.target.value)}
-                          placeholder="2500"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label style={{ display: 'block', fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 6 }}>
-                          Duración del listado
-                        </label>
-                        <select className="input-base" value="7 días" style={{ cursor: 'pointer' }}>
-                          <option>7 días</option>
-                          <option>14 días</option>
-                          <option>30 días</option>
-                          <option>Indefinido</option>
-                        </select>
-                      </div>
-                    </div>
+                  <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
                     <div>
-                      <label style={{ display: 'block', fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 6 }}>
-                        Descripción para el marketplace
+                      <label style={{ display: 'block', fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>
+                        Seleccionar cNFT
                       </label>
-                      <textarea
-                        className="input-base"
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                        rows={3}
-                        placeholder="Describe el estado y características del producto..."
-                        style={{ resize: 'none' }}
-                      />
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10 }}>
+                        {assets.map((asset: any) => {
+                          const assetId = String(asset?.id || asset?.assetId || '')
+                          const itemName = asset?.content?.metadata?.name || `Certificado ${assetId.slice(0, 8)}`
+                          const img = asset.content?.links?.image || asset.content?.files?.[0]?.uri || ''
+                          const value = getAssetValue(asset)
+
+                          return (
+                            <button
+                              key={assetId}
+                              type="button"
+                              onClick={() => setSelectedNft(assetId)}
+                              style={{
+                                background: selectedNft === assetId ? 'rgba(0,200,255,0.08)' : 'rgba(0,200,255,0.03)',
+                                border: `1px solid ${selectedNft === assetId ? 'rgba(0,200,255,0.35)' : 'rgba(0,200,255,0.12)'}`,
+                                borderRadius: 10, padding: '10px 12px', cursor: 'pointer', textAlign: 'left',
+                                transition: 'all 0.2s',
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                                <img src={img || DEFAULT_ASSET_IMAGE} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: 'cover' }} />
+                                <div style={{ overflow: 'hidden' }}>
+                                  <div style={{ fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: '#dde3f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{itemName}</div>
+                                  <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, color: '#5a6485' }}>{assetId.slice(0, 8)}</div>
+                                </div>
+                              </div>
+                              <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 14, color: '#00c8ff' }}>${value.toLocaleString()}</div>
+                            </button>
+                          )
+                        })}
+                      </div>
                     </div>
-                  </>
+
+                    {mode === 'transfer' ? (
+                      <>
+                        <div>
+                          <label style={{ display: 'block', fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 6 }}>
+                            Dirección del Destinatario
+                          </label>
+                          <input
+                            className="input-base"
+                            value={destination}
+                            onChange={(e) => setDestination(e.target.value)}
+                            placeholder="0x742d35Cc6634C0532925a3b8D4C9..."
+                            style={{ fontFamily: 'JetBrains Mono', fontSize: 12 }}
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 6 }}>
+                            Nota (opcional)
+                          </label>
+                          <textarea
+                            className="input-base"
+                            value={note}
+                            onChange={(e) => setNote(e.target.value)}
+                            placeholder="Mensaje para el destinatario..."
+                            rows={3}
+                            style={{ resize: 'none' }}
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                          <div>
+                            <label style={{ display: 'block', fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 6 }}>
+                              Precio de venta (USD)
+                            </label>
+                            <input
+                              className="input-base"
+                              type="number"
+                              value={priceUsd}
+                              onChange={(e) => setPriceUsd(e.target.value)}
+                              placeholder="2500"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label style={{ display: 'block', fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 6 }}>
+                              Duración del listado
+                            </label>
+                            <select className="input-base" value="7 días" style={{ cursor: 'pointer' }}>
+                              <option>7 días</option>
+                              <option>14 días</option>
+                              <option>30 días</option>
+                              <option>Indefinido</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 6 }}>
+                            Descripción para el marketplace
+                          </label>
+                          <textarea
+                            className="input-base"
+                            value={description}
+                            onChange={(e) => setDescription(e.target.value)}
+                            rows={3}
+                            placeholder="Describe el estado y características del producto..."
+                            style={{ resize: 'none' }}
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {error && (
+                      <div style={{ padding: '12px 14px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.24)', color: '#fecaca', fontFamily: 'JetBrains Mono', fontSize: 11 }}>
+                        {error}
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', background: 'rgba(0,200,255,0.04)', border: '1px solid rgba(0,200,255,0.12)', borderRadius: 8 }}>
+                      <AlertCircle size={14} color="#00c8ff" />
+                      <span style={{ fontFamily: 'JetBrains Mono', fontSize: 11, color: '#8a93b8' }}>
+                        {mode === 'transfer'
+                          ? 'Esta acción requiere confirmar la transferencia desde tu wallet conectada.'
+                          : 'Se cobrará una comisión del 2.5% al completarse la venta.'}
+                      </span>
+                    </div>
+
+                    <button type="submit" disabled={processing || !selectedAsset} className={mode === 'transfer' ? 'btn-primary' : 'btn-gold'} style={{ padding: '13px', fontSize: 15, opacity: processing || !selectedAsset ? 0.7 : 1 }}>
+                      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                        {processing ? 'PROCESANDO...' : mode === 'transfer' ? <><Send size={15} /> CONFIRMAR TRANSFERENCIA</> : <><TrendingUp size={15} /> LISTAR EN MARKETPLACE</>}
+                      </span>
+                    </button>
+                  </form>
                 )}
-
-                {error && (
-                  <div style={{ padding: '12px 14px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.24)', color: '#fecaca', fontFamily: 'JetBrains Mono', fontSize: 11 }}>
-                    {error}
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', background: 'rgba(0,200,255,0.04)', border: '1px solid rgba(0,200,255,0.12)', borderRadius: 8 }}>
-                  <AlertCircle size={14} color="#00c8ff" />
-                  <span style={{ fontFamily: 'JetBrains Mono', fontSize: 11, color: '#8a93b8' }}>
-                    {mode === 'transfer'
-                      ? 'Esta acción requiere confirmar la transferencia desde tu wallet conectada.'
-                      : 'Se cobrará una comisión del 2.5% al completarse la venta.'}
-                  </span>
-                </div>
-
-                <button type="submit" disabled={processing || !selectedAsset} className={mode === 'transfer' ? 'btn-primary' : 'btn-gold'} style={{ padding: '13px', fontSize: 15, opacity: processing || !selectedAsset ? 0.7 : 1 }}>
-                  <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                    {processing ? 'PROCESANDO...' : mode === 'transfer' ? <><Send size={15} /> CONFIRMAR TRANSFERENCIA</> : <><TrendingUp size={15} /> LISTAR EN MARKETPLACE</>}
-                  </span>
-                </button>
-              </form>
+              </div>
             )}
           </div>
-        )}
 
-        {!submitted && publicKey && assets.length > 0 && selectedAsset && (
-          <div style={{ marginTop: 24 }}>
-            <div className="glow-border" style={{ background: '#0c0f1d', borderRadius: 14, padding: 20 }}>
-              <SectionTitle sub="Resumen">Resumen</SectionTitle>
-              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                <img src={selectedAssetImage || DEFAULT_ASSET_IMAGE} alt="" style={{ width: 160, height: 120, objectFit: 'cover', borderRadius: 8 }} />
-                <div>
-                  <div style={{ fontFamily: 'Rajdhani', fontSize: 16, fontWeight: 700 }}>{selectedAssetName}</div>
-                  <div style={{ marginTop: 8, fontFamily: 'JetBrains Mono', fontSize: 12, color: '#8a93b8' }}>ID: {String(selectedAsset.id || selectedAsset.assetId).slice(0, 12)}...</div>
-                  <div style={{ marginTop: 8, fontFamily: 'JetBrains Mono', fontSize: 12, color: '#8a93b8' }}>Categoría: {getAssetCategory(selectedAsset)}</div>
-                  <div style={{ marginTop: 8, fontFamily: 'JetBrains Mono', fontSize: 12, color: '#8a93b8' }}>Valor: ${getAssetValue(selectedAsset).toLocaleString()}</div>
-                  <div style={{ marginTop: 12 }}><Badge color="#22c55e">EN CARTERA</Badge></div>
+          {/* Panel Derecho: Preview del cNFT Seleccionado */}
+          <div>
+            {!submitted && publicKey && selectedAsset ? (
+              <div className="glow-border" style={{ background: '#0c0f1d', borderRadius: 14, padding: 20, position: 'sticky', top: 20 }}>
+                <SectionTitle sub="Información detallada del cNFT activo">Resumen del cNFT</SectionTitle>
+                <div style={{ marginTop: 12 }}>
+                  <img src={selectedAssetImage || DEFAULT_ASSET_IMAGE} alt="" style={{ width: '100%', height: 200, objectFit: 'cover', borderRadius: 10, border: '1px solid rgba(0,200,255,0.15)', marginBottom: 16 }} />
+                  <div style={{ fontFamily: 'Rajdhani', fontSize: 18, fontWeight: 700, color: '#ffffff', marginBottom: 6 }}>{selectedAssetName}</div>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontFamily: 'JetBrains Mono', fontSize: 12, color: '#8a93b8' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>ID:</span>
+                      <span style={{ color: '#dde3f0' }}>{String(selectedAsset.id || selectedAsset.assetId).slice(0, 10)}...</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Categoría:</span>
+                      <span style={{ color: '#dde3f0' }}>{getAssetCategory(selectedAsset)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Valor Estimado:</span>
+                      <span style={{ color: '#00c8ff', fontWeight: 700 }}>${getAssetValue(selectedAsset).toLocaleString()}</span>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-start' }}>
+                    <Badge color="#22c55e">EN CARTERA</Badge>
+                  </div>
                 </div>
               </div>
+            ) : (
+              <div style={{ border: '1px dashed rgba(255,255,255,0.1)', borderRadius: 14, padding: 20, textAlign: 'center', color: '#5a6485', fontFamily: 'JetBrains Mono', fontSize: 12 }}>
+                Selecciona un cNFT para ver su resumen.
+              </div>
+            )}
+          </div>
+
+        </div>
+
+        {/* Sección Inferior: Listado de Artículos que Puse a la Venta */}
+        {mode === 'sell' && publicKey && (
+          <div style={{ marginTop: 40 }}>
+            <div className="glow-border" style={{ background: '#0c0f1d', borderRadius: 14, padding: 28 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <SectionTitle sub="Gestión de certificados publicados actualmente en la plataforma">
+                  Mis Artículos en Venta
+                </SectionTitle>
+                <button className="btn-ghost" onClick={fetchMyListings} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                  <RefreshCw size={12} /> Actualizar
+                </button>
+              </div>
+
+              {loadingListings ? (
+                <div style={{ padding: '20px 0', textAlign: 'center', color: '#8a93b8', fontFamily: 'JetBrains Mono', fontSize: 12 }}>
+                  Cargando tus publicaciones...
+                </div>
+              ) : myListings.length === 0 ? (
+                <div style={{ padding: '30px 12px', border: '1px dashed rgba(255,255,255,0.08)', borderRadius: 10, textAlign: 'center', color: '#5a6485', fontFamily: 'JetBrains Mono', fontSize: 12 }}>
+                  No tienes ningún artículo publicado en el marketplace actualmente.
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontFamily: 'JetBrains Mono', fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid rgba(0,200,255,0.12)', color: '#5a6485', textTransform: 'uppercase', fontSize: 10 }}>
+                        <th style={{ padding: '12px 10px' }}>Artículo</th>
+                        <th style={{ padding: '12px 10px' }}>Precio (USD)</th>
+                        <th style={{ padding: '12px 10px' }}>Categoría</th>
+                        <th style={{ padding: '12px 10px' }}>Estado</th>
+                        <th style={{ padding: '12px 10px', textAlign: 'right' }}>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {myListings.map((item: any) => (
+                        <tr key={item.id || item.asset_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '12px 10px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              <img src={item.image || DEFAULT_ASSET_IMAGE} alt="" style={{ width: 36, height: 36, borderRadius: 6, objectFit: 'cover' }} />
+                              <div>
+                                <div style={{ fontFamily: 'Rajdhani', fontSize: 14, fontWeight: 700, color: '#f0f4f9' }}>{item.title || 'Certificado'}</div>
+                                <div style={{ fontSize: 10, color: '#5a6485' }}>ID: {String(item.asset_id || '').slice(0, 10)}...</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td style={{ padding: '12px 10px', fontFamily: 'Rajdhani', fontSize: 16, fontWeight: 700, color: '#f59e0b' }}>
+                            ${Number(item.price_usd || item.price).toLocaleString()}
+                          </td>
+                          <td style={{ padding: '12px 10px', color: '#8a93b8' }}>
+                            {item.category || 'General'}
+                          </td>
+                          <td style={{ padding: '12px 10px' }}>
+                            <Badge color="#f59e0b">LISTADO</Badge>
+                          </td>
+                          <td style={{ padding: '12px 10px', textAlign: 'right' }}>
+                            <button
+                              onClick={() => handleRemoveListing(item.id || item.asset_id)}
+                              style={{
+                                background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)',
+                                color: '#f87171', borderRadius: 6, padding: '6px 10px', cursor: 'pointer',
+                                fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4,
+                                transition: 'all 0.2s'
+                              }}
+                            >
+                              <Trash2 size={12} /> Eliminar
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         )}
