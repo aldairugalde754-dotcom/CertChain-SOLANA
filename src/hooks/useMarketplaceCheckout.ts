@@ -9,6 +9,7 @@ const SOL_USD_RATE = 600
 
 export function useMarketplaceCheckout() {
   const { publicKey, sendTransaction } = useWallet()
+  const { comprarDirectoCpi, program, getRegistroPda } = useCertChainProgram()
   const [processing, setProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -30,9 +31,6 @@ export function useMarketplaceCheckout() {
 
     try {
       const connection = new Connection(RPC_URL, 'confirmed')
-
-      // Try to use on-chain program comprarDirecto (atomic payment + transfer).
-      const { comprarDirectoCpi, program, getRegistroPda } = useCertChainProgram()
 
       for (const item of items) {
         // Obtener info del listing
@@ -60,17 +58,31 @@ export function useMarketplaceCheckout() {
           try {
             // Fetch registro_global to obtain admin pubkey required by the instruction
             let adminPub = ''
+            let registroExists = false
             try {
               const registroPda = getRegistroPda()
               const registroData: any = await program.account.registroGlobal.fetch(registroPda)
               adminPub = registroData?.admin?.toString() || ''
+              registroExists = true
             } catch (e) {
-              // If fetching registro fails, leave adminPub empty and let comprarDirectoCpi throw if needed
-              console.warn('No se pudo leer registro_global para admin:', e)
+              // registro_global not found or unreadable on this network
+              console.warn('registro_global no disponible, se usará fallback a transferencia simple:', e)
+              registroExists = false
             }
 
-            paymentSignature = await comprarDirectoCpi({ assetIdStr: String(item.id), vendedorStr: listing.seller_wallet, adminStr: adminPub })
-            console.log('Compra directa on-chain completada:', paymentSignature)
+            if (!registroExists) {
+              // Fallback to simple transfer if the on-chain registro is not initialized
+              const recentBlockhash = (await connection.getLatestBlockhash()).blockhash
+              const paymentTx = new Transaction({ recentBlockhash, feePayer: publicKey }).add(
+                SystemProgram.transfer({ fromPubkey: publicKey, toPubkey: sellerPubkey, lamports })
+              )
+              paymentSignature = await sendTransaction(paymentTx, connection)
+              await connection.confirmTransaction(paymentSignature, 'confirmed')
+              console.log('Fallback pago simple realizado porque registro_global no existe:', paymentSignature)
+            } else {
+              paymentSignature = await comprarDirectoCpi({ assetIdStr: String(item.id), vendedorStr: listing.seller_wallet, adminStr: adminPub })
+              console.log('Compra directa on-chain completada:', paymentSignature)
+            }
           } catch (cpiErr: any) {
             // Fallback: intentar envío simple de transfer si CPI falla
             console.warn('comprarDirectoCpi falló, intentando transferencia simple:', cpiErr?.message || cpiErr)
