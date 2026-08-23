@@ -1701,8 +1701,7 @@ async function transferCnftOnChain(assetIdStr, buyerWalletStr) {
 
     console.log(`[ON-CHAIN] Enviando transaccion Bubblegum transfer para ${assetIdStr} de ${assetWithProof.leafOwner.toString()} a ${buyerWalletStr}...`);
     const txBuilder = await bubblegumTransfer(umi, {
-      leafOwner: umi.identity.publicKey,
-      leafDelegate: umi.identity.publicKey,
+      leafOwner: assetWithProof.leafOwner,
       newLeafOwner: buyer,
       merkleTree: assetWithProof.merkleTree,
       root: assetWithProof.root,
