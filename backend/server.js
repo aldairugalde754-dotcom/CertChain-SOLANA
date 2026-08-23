@@ -1123,6 +1123,20 @@ async function ensureDatabaseTables() {
         KEY idx_audit_wallet (bidder_wallet, created_at)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS auction_sales (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        auction_id BIGINT UNSIGNED NOT NULL,
+        asset_id VARCHAR(255) NOT NULL,
+        seller_wallet VARCHAR(128) NOT NULL,
+        buyer_wallet VARCHAR(128) NOT NULL,
+        price_usd DECIMAL(12,2) NOT NULL,
+        tx_hash VARCHAR(128),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_auction_sales_asset (asset_id),
+        KEY idx_auction_sales_buyer (buyer_wallet, created_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
     console.log('Tablas de MySQL verificadas / creadas exitosamente.');
   } catch (err) {
     console.error('Error asegurando tablas de base de datos:', err);
@@ -1420,6 +1434,61 @@ app.post('/api/auctions/bid', async (req, res) => {
   } catch (err) {
     console.error('POST /api/auctions/bid error', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Claim / settle an ended auction (called by the winning bidder client after signing on-chain)
+app.post('/api/auctions/claim', async (req, res) => {
+  try {
+    const { asset_id, buyer_wallet, tx_hash, bid_amount } = req.body;
+    if (!asset_id || !buyer_wallet || !bid_amount) return res.status(400).json({ error: 'asset_id, buyer_wallet y bid_amount son requeridos' });
+
+    const [rows] = await db.execute('SELECT * FROM auction_listings WHERE asset_id = ?', [asset_id]);
+    if (!rows || rows.length === 0) return res.status(404).json({ error: 'Subasta no encontrada' });
+    const auction = rows[0];
+
+    const isExpired = new Date(auction.end_time).getTime() <= Date.now();
+    if (!isExpired) return res.status(400).json({ error: 'La subasta aun no ha finalizado' });
+
+    // Validate buyer is the current highest bidder
+    if (!auction.current_bidder_wallet || String(auction.current_bidder_wallet) !== String(buyer_wallet)) {
+      return res.status(403).json({ error: 'Solo el postor ganador puede reclamar la subasta' });
+    }
+
+    const salePrice = Number(bid_amount || auction.current_bid || 0);
+
+    // Record auction sale
+    try {
+      await db.execute(
+        'INSERT INTO auction_sales (auction_id, asset_id, seller_wallet, buyer_wallet, price_usd, tx_hash) VALUES (?, ?, ?, ?, ?, ?)',
+        [auction.id, asset_id, auction.seller_wallet, buyer_wallet, salePrice, tx_hash || null]
+      );
+      console.log('Auction sale recorded: asset=' + asset_id + ', buyer=' + buyer_wallet + ', price=' + salePrice);
+    } catch (e) {
+      console.warn('Warning: Could not insert auction_sales:', e.message || e);
+    }
+
+    // Remove listing
+    await db.execute('DELETE FROM auction_listings WHERE asset_id = ?', [asset_id]);
+
+    // Update certificate owner off-chain if exists
+    try {
+      const [certCheck] = await db.execute('SELECT id, owner_wallet FROM certificates WHERE asset_id = ? OR id = ?', [asset_id, asset_id]);
+      if (certCheck && certCheck.length > 0) {
+        const cert = certCheck[0];
+        await db.execute('UPDATE certificates SET owner_wallet = ? WHERE id = ?', [buyer_wallet, cert.id]);
+        console.log('Propiedad transferida en BD: from=' + cert.owner_wallet + ', to=' + buyer_wallet);
+      } else {
+        console.warn('Advertencia: Certificado no encontrado para asset_id=' + asset_id);
+      }
+    } catch (e) {
+      console.warn('Advertencia: No se pudo actualizar certificado en BD:', e.message || e);
+    }
+
+    res.json({ success: true, asset_id, buyer_wallet, seller_wallet: auction.seller_wallet, price_usd: salePrice, tx_hash: tx_hash || null });
+  } catch (err) {
+    console.error('POST /api/auctions/claim error', err);
+    res.status(500).json({ error: err.message || 'Error procesando reclamación de subasta' });
   }
 });
 

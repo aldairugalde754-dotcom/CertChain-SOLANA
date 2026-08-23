@@ -9,6 +9,7 @@ import { resolveAssetImage, DEFAULT_ASSET_IMAGE } from '../utils/metadata'
 import { API_BASE_URL, DAS_RPC_URL, DEFAULT_MERKLE_TREE_PUBKEY } from '../config'
 import { useMarketplaceCheckout } from '../hooks/useMarketplaceCheckout'
 import { useUmi } from '../hooks/useUmi'
+import { useCertChainProgram } from '../hooks/useCertChainProgram'
 import { subscribeToDataRefresh, triggerDataRefresh } from '../utils/dataRefresh'
 
 async function sendBubblegumTransferWithRetry(umi: any, transferInput: any) {
@@ -393,6 +394,7 @@ function ProductCard({ product, inCart, onAddCart }: { product: any; inCart: boo
 
 export function ClientAuctions() {
   const { publicKey } = useWallet()
+  const { comprarDirectoCpi, program, getRegistroPda } = useCertChainProgram()
   const [auctions, setAuctions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [bidAmount, setBidAmount] = useState<Record<string, string>>({})
@@ -567,6 +569,45 @@ export function ClientAuctions() {
     }
   }
 
+  const handleClaimAuction = async (auction: any) => {
+    if (!publicKey) return setBidError(prev => ({ ...prev, [auction.id || auction.asset_id]: 'Conecta tu wallet para reclamar' }))
+    try {
+      // attempt to read admin pubkey from registro_global
+      let adminPub = ''
+      try {
+        if (program && getRegistroPda) {
+          const registroPda = getRegistroPda()
+          const registroData: any = await program.account.registroGlobal.fetch(registroPda)
+          adminPub = registroData?.admin?.toString() || ''
+        }
+      } catch (e) {
+        console.warn('No se pudo leer registro_global para admin:', e)
+      }
+
+      // Call program CPI to perform payment + transfer atomically
+      const sig = await comprarDirectoCpi({ assetIdStr: String(auction.asset_id), vendedorStr: auction.seller_wallet, adminStr: adminPub })
+      console.log('comprarDirectoCpi signature', sig)
+
+      // Notify backend to record sale and update off-chain owner
+      try {
+        await fetch(`${API_BASE_URL}/api/auctions/claim`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ asset_id: auction.asset_id, buyer_wallet: publicKey.toString(), tx_hash: sig, bid_amount: auction.current_bid })
+        })
+      } catch (err) {
+        console.warn('No se pudo notificar al backend de la reclamación:', err)
+      }
+
+      triggerDataRefresh('auctions')
+      triggerDataRefresh('inventory')
+      setPlacedBids(prev => prev) // trigger re-render
+    } catch (err: any) {
+      console.error('Error claiming auction', err)
+      setBidError(prev => ({ ...prev, [auction.id || auction.asset_id]: err.message || String(err) }))
+    }
+  }
+
   const itemsToDisplay = auctions
 
   return (
@@ -628,10 +669,7 @@ export function ClientAuctions() {
                   />
                   <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(7,9,15,0.85) 0%, transparent 50%)' }} />
                   <div style={{ position: 'absolute', top: 10, left: 10, display: 'flex', gap: 6 }}>
-                    {isEnding
-                      ? <Badge color="#f59e0b">⚠ Terminando</Badge>
-                      : <Badge color="#22c55e">🔴 En vivo</Badge>
-                    }
+                    {isEnding ? <Badge color="#f59e0b">Terminando</Badge> : <Badge color="#22c55e">En vivo</Badge>}
                     {auction.bids !== undefined && <Badge color="#8a93b8">{auction.bids} pujas</Badge>}
                   </div>
 
@@ -669,8 +707,17 @@ export function ClientAuctions() {
                   <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 16, letterSpacing: '0.03em', marginBottom: 6, color: '#f0f4f9' }}>
                     {title}
                   </div>
-                  <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, color: '#5a6485', marginBottom: 12 }}>
-                    ID: <code style={{ letterSpacing: '0.05em' }}>{idKey ? (idKey.length > 16 ? `${idKey.slice(0, 16)}...` : idKey) : 'N/A'}</code>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <div style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485' }}>Certificado</div>
+                      <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, color: '#dde3f0' }}>{idKey ? (idKey.length > 12 ? `${idKey.slice(0,8)}...${idKey.slice(-4)}` : idKey) : 'N/A'}</div>
+                      <div style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: '#8a93b8', marginLeft: 10 }}>{auction.company || auction.seller_name || (auction.seller_wallet ? String(auction.seller_wallet).slice(0,6) + '...' : '')}</div>
+                    </div>
+                    <div>
+                      <a href={`${window.location.origin}/traceability/${encodeURIComponent(idKey)}`} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
+                        <button className="btn-ghost" style={{ padding: '6px 10px', fontSize: 11 }}>Historial</button>
+                      </a>
+                    </div>
                   </div>
 
                   {/* Price Info - Enhanced */}
@@ -725,59 +772,76 @@ export function ClientAuctions() {
                       </span>
                     </div>
                   ) : (
-                    <div>
-                      <div style={{ display: 'flex', gap: 8, marginBottom: validationError || bidErrorMsg ? 8 : 0 }}>
-                        <input
-                          className="input-base"
-                          type="number"
-                          placeholder={`Mín. $${minNextBid.toFixed(2)}`}
-                          value={bidAmount[idKey] || ''}
-                          onChange={e => {
-                            setBidAmount(prev => ({ ...prev, [idKey]: e.target.value }))
-                            setBidValidation(prev => ({ ...prev, [idKey]: '' }))
-                          }}
-                          style={{
-                            fontFamily: 'JetBrains Mono',
-                            fontSize: 12,
-                            border: validationError ? '1px solid #ef4444' : undefined,
-                            background: validationError ? 'rgba(239,68,68,0.05)' : undefined
-                          }}
-                          disabled={isEnding && timeLeftObj.h === '00' && timeLeftObj.m === '00' && timeLeftObj.s === '00'}
-                        />
-                        <button
-                          className={isEnding ? 'btn-gold' : 'btn-primary'}
-                          style={{
-                            padding: '10px 16px',
-                            whiteSpace: 'nowrap',
-                            fontSize: 13,
-                            fontWeight: 600,
-                            cursor: validationError ? 'not-allowed' : 'pointer',
-                            opacity: validationError ? 0.6 : 1
-                          }}
-                          onClick={() => handleBid(idKey, auction.asset_id || auction.id, currentBidVal || startingVal)}
-                          disabled={!!validationError}
-                        >
-                          PUJAR
-                        </button>
-                      </div>
-                      {(validationError || bidErrorMsg) && (
-                        <div style={{
-                          display: 'flex',
-                          gap: 6,
-                          alignItems: 'center',
-                          padding: '8px 10px',
-                          background: 'rgba(239,68,68,0.1)',
-                          border: '1px solid rgba(239,68,68,0.2)',
-                          borderRadius: 6,
-                          fontSize: 11,
-                          color: '#ef4444',
-                          fontFamily: 'JetBrains Mono'
-                        }}>
-                          <AlertCircle size={12} style={{ flexShrink: 0 }} />
-                          {validationError || bidErrorMsg}
+                    // If auction ended and current user is winner, show claim button
+                    (() => {
+                      const endedLocal = auction.end_time ? (new Date(auction.end_time).getTime() <= Date.now()) : false
+                      const isWinnerLocal = publicKey && auction.current_bidder_wallet && String(auction.current_bidder_wallet) === String(publicKey.toString())
+                      if (endedLocal && isWinnerLocal) {
+                        return (
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <button className="btn-accent" style={{ flex: 1, padding: '10px 16px' }} onClick={() => handleClaimAuction(auction)}>
+                              RECLAMAR Y PAGAR
+                            </button>
+                          </div>
+                        )
+                      }
+
+                      return (
+                        <div>
+                          <div style={{ display: 'flex', gap: 8, marginBottom: validationError || bidErrorMsg ? 8 : 0 }}>
+                            <input
+                              className="input-base"
+                              type="number"
+                              placeholder={`Mín. $${minNextBid.toFixed(2)}`}
+                              value={bidAmount[idKey] || ''}
+                              onChange={e => {
+                                setBidAmount(prev => ({ ...prev, [idKey]: e.target.value }))
+                                setBidValidation(prev => ({ ...prev, [idKey]: '' }))
+                              }}
+                              style={{
+                                fontFamily: 'JetBrains Mono',
+                                fontSize: 12,
+                                border: validationError ? '1px solid #ef4444' : undefined,
+                                background: validationError ? 'rgba(239,68,68,0.05)' : undefined
+                              }}
+                              disabled={isEnding && timeLeftObj.h === '00' && timeLeftObj.m === '00' && timeLeftObj.s === '00'}
+                            />
+                            <button
+                              className={isEnding ? 'btn-gold' : 'btn-primary'}
+                              style={{
+                                padding: '10px 16px',
+                                whiteSpace: 'nowrap',
+                                fontSize: 13,
+                                fontWeight: 600,
+                                cursor: validationError ? 'not-allowed' : 'pointer',
+                                opacity: validationError ? 0.6 : 1
+                              }}
+                              onClick={() => handleBid(idKey, auction.asset_id || auction.id, currentBidVal || startingVal)}
+                              disabled={!!validationError}
+                            >
+                              PUJAR
+                            </button>
+                          </div>
+                          {(validationError || bidErrorMsg) && (
+                            <div style={{
+                              display: 'flex',
+                              gap: 6,
+                              alignItems: 'center',
+                              padding: '8px 10px',
+                              background: 'rgba(239,68,68,0.1)',
+                              border: '1px solid rgba(239,68,68,0.2)',
+                              borderRadius: 6,
+                              fontSize: 11,
+                              color: '#ef4444',
+                              fontFamily: 'JetBrains Mono'
+                            }}>
+                              <AlertCircle size={12} style={{ flexShrink: 0 }} />
+                              {validationError || bidErrorMsg}
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
+                      )
+                    })()
                   )}
                 </div>
               </div>
@@ -799,9 +863,9 @@ export function ClientAuctions() {
                 <thead>
                   <tr>
                     <th>Subasta</th>
-                    <th>Monto</th>
+                    <th>Monto (USD)</th>
                     <th>Fecha</th>
-                    <th>Hash</th>
+                    <th>Acción</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -814,8 +878,10 @@ export function ClientAuctions() {
                       <td style={{ fontFamily: 'JetBrains Mono', color: '#8a93b8' }}>
                         {bid.created_at ? new Date(bid.created_at).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' }) : 'Sin fecha'}
                       </td>
-                      <td style={{ fontFamily: 'JetBrains Mono', color: '#5a6485', maxWidth: 220 }}>
-                        {bid.bid_hash ? bid.bid_hash.slice(0, 16) + '...' : 'Sin hash'}
+                      <td style={{ maxWidth: 220 }}>
+                        <a href={`${window.location.origin}/traceability/${encodeURIComponent(bid.asset_id)}`} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
+                          <button className="btn-ghost" style={{ padding: '6px 10px', fontSize: 11 }}>Ver certificado</button>
+                        </a>
                       </td>
                     </tr>
                   ))}
