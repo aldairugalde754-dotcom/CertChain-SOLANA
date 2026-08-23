@@ -404,6 +404,18 @@ function ProductCard({ product, inCart, onAddCart }: { product: any; inCart: boo
           </div>
         </div>
       </div>
+      {qrVisible.visible && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#071026', padding: 20, borderRadius: 12, border: '1px solid rgba(255,255,255,0.04)', minWidth: 320, textAlign: 'center' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div style={{ fontFamily: 'Rajdhani', fontSize: 16, fontWeight: 700 }}>{qrVisible.title || 'Verificar Certificado'}</div>
+              <button type="button" onClick={() => setQrVisible({ visible: false, url: '', title: '' })} className="btn-ghost">×</button>
+            </div>
+            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrVisible.url)}`} alt="QR" style={{ width: 300, height: 300 }} />
+            <div style={{ marginTop: 12, fontFamily: 'JetBrains Mono', fontSize: 12, color: '#8a93b8' }}>{qrVisible.url}</div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1157,6 +1169,9 @@ export function ClientWallet() {
   const [assets, setAssets] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [marketplaceListings, setMarketplaceListings] = useState<any[]>([])
+  const [auctionListings, setAuctionListings] = useState<any[]>([])
+  const [qrVisible, setQrVisible] = useState<{ visible: boolean; url: string; title?: string }>({ visible: false, url: '', title: '' })
 
   useEffect(() => {
     let cancelled = false
@@ -1228,6 +1243,26 @@ export function ClientWallet() {
     }
 
     fetchWalletAssets()
+    // Fetch marketplace and auctions to compute statuses
+    async function fetchExternalLists() {
+      try {
+        const [mRes, aRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/marketplace/listings`),
+          fetch(`${API_BASE_URL}/api/auctions/listings`)
+        ])
+        if (mRes.ok) {
+          const mJson = await mRes.json()
+          if (Array.isArray(mJson) && !cancelled) setMarketplaceListings(mJson)
+        }
+        if (aRes.ok) {
+          const aJson = await aRes.json()
+          if (Array.isArray(aJson) && !cancelled) setAuctionListings(aJson)
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+    fetchExternalLists()
     return () => { cancelled = true }
   }, [publicKey])
 
@@ -1245,10 +1280,18 @@ export function ClientWallet() {
         </div>
 
         <div className="glow-border" style={{ background: '#0c0f1d', borderRadius: 12, padding: '16px 20px', marginBottom: 32, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-          <div>
+          <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, color: '#5a6485', letterSpacing: '0.1em', marginBottom: 4 }}>DIRECCIÓN DE WALLET</div>
-            <div style={{ fontFamily: 'JetBrains Mono', fontSize: 13, color: '#dde3f0' }}>
-              {walletAddress ? `${walletAddress.slice(0, 8)}...${walletAddress.slice(-8)}` : 'Sin wallet conectada'}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ fontFamily: 'JetBrains Mono', fontSize: 13, color: '#dde3f0', overflowWrap: 'anywhere' }}>{walletAddress || 'Sin wallet conectada'}</div>
+              {walletAddress && (
+                <button
+                  type="button"
+                  onClick={() => { navigator.clipboard?.writeText(walletAddress).catch(() => {}) }}
+                  className="btn-ghost"
+                  style={{ fontSize: 12 }}
+                >Copiar</button>
+              )}
             </div>
           </div>
           <Badge color={publicKey ? '#22c55e' : '#f59e0b'}>{publicKey ? 'Conectada' : 'Sin conectar'}</Badge>
@@ -1297,7 +1340,14 @@ export function ClientWallet() {
                       <Badge color="#00c8ff">{assetId ? assetId.slice(0, 8) : `CNFT-${idx + 1}`}</Badge>
                     </div>
                     <div style={{ position: 'absolute', top: 10, right: 10 }}>
-                      <Badge color="#22c55e">Tuyo</Badge>
+                      {(() => {
+                        const assetIdStr = String(asset?.id || asset?.assetId || '')
+                        const inMarketplace = marketplaceListings.some((l: any) => String(l.asset_id || l.assetId || l.id || '') === assetIdStr)
+                        const inAuction = auctionListings.some((a: any) => String(a.asset_id || a.assetId || a.id || '') === assetIdStr)
+                        if (inAuction) return <Badge color="#f59e0b">Subasta</Badge>
+                        if (inMarketplace) return <Badge color="#f97316">Marketplace</Badge>
+                        return <Badge color="#22c55e">Tuyo</Badge>
+                      })()}
                     </div>
                   </div>
 
@@ -1321,9 +1371,25 @@ export function ClientWallet() {
                       <div style={{ minWidth: 0, overflow: 'hidden' }}>
                         <HashDisplay hash={assetId || 'wallet-asset'} />
                       </div>
-                      <button style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#5a6485' }}>
-                        <ArrowUpRight size={13} />
-                      </button>
+                      <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                        <button
+                          type="button"
+                          onClick={() => window.open(`${window.location.origin}/traceability/${encodeURIComponent(assetId)}`, '_blank')}
+                          className="btn-ghost"
+                          style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                        >
+                          <ArrowUpRight size={13} /> Historial
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const url = `${window.location.origin}/traceability/${encodeURIComponent(assetId)}`
+                            setQrVisible({ visible: true, url, title: name })
+                          }}
+                          className="btn-primary"
+                          style={{ fontSize: 12 }}
+                        >Verificar (QR)</button>
+                      </div>
                     </div>
                   </div>
                 </div>
