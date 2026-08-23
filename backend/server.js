@@ -1490,7 +1490,15 @@ app.post('/api/auctions/claim', async (req, res) => {
       console.warn('Advertencia: No se pudo actualizar certificado en BD:', e.message || e);
     }
 
-    res.json({ success: true, asset_id, buyer_wallet, seller_wallet: auction.seller_wallet, price_usd: salePrice, tx_hash: tx_hash || null });
+    // Transferir cNFT on-chain en Solana via Bubblegum al ganador de la subasta
+    let onChainTx = null;
+    try {
+      onChainTx = await transferCnftOnChain(asset_id, buyer_wallet);
+    } catch (onChainErr) {
+      console.warn('Advertencia: No se completó la transferencia cNFT on-chain en subasta:', onChainErr.message || onChainErr);
+    }
+
+    res.json({ success: true, asset_id, buyer_wallet, seller_wallet: auction.seller_wallet, price_usd: salePrice, tx_hash: tx_hash || null, on_chain_tx: onChainTx });
   } catch (err) {
     console.error('POST /api/auctions/claim error', err);
     res.status(500).json({ error: err.message || 'Error procesando reclamación de subasta' });
