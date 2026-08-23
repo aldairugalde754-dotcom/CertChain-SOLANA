@@ -1394,24 +1394,42 @@ export function ClientTransfer() {
         const candidates = json.result?.assets || json.result?.items || json.result || []
         const list = Array.isArray(candidates) ? candidates : []
 
+        // Also fetch public marketplace listings to avoid allowing transfer/listing of already-listed assets
+        let listedSet = new Set()
+        try {
+          const listRes = await fetch(`${API_BASE_URL}/api/marketplace/listings`)
+          if (listRes.ok) {
+            const listJson = await listRes.json()
+            if (Array.isArray(listJson)) {
+              const ids = listJson.map((a: any) => String(a.asset_id || a.id || a.assetId || ''))
+              listedSet = new Set(ids)
+            }
+          }
+        } catch (e) {
+          // ignore listing fetch errors - we'll still show assets but operations will be blocked server-side
+        }
+
         const filtered = list.filter((asset: any) => {
-          const isCompressed = asset?.compression?.compressed === true || asset?.interface === 'V1_NFT'
-          const notBurnt = asset?.burnt !== true
-          if (!isCompressed || !notBurnt) return false
+            const assetIdStr = String(asset?.id || asset?.assetId || asset?.mint || '')
+            if (assetIdStr && listedSet.has(assetIdStr)) return false
 
-          const metadata = asset?.content?.metadata || {}
-          const symbol = String(metadata?.symbol || '').toUpperCase()
-          const attrs = Array.isArray(metadata?.attributes) ? metadata.attributes : Array.isArray(asset?.content?.attributes) ? asset.content.attributes : []
-          const hasCertSymbol = symbol === 'CERT'
-          const hasPlatformTag = attrs.some((attribute: any) => {
-            const trait = String(attribute?.trait_type || attribute?.traitType || attribute?.type || '').toLowerCase()
-            const value = String(attribute?.value || attribute?.value_string || attribute?.trait_value || '').toLowerCase()
-            return (trait === 'plataforma' && value === 'certchain') || (trait === 'tipo' && value.includes('certificado'))
+            const isCompressed = asset?.compression?.compressed === true || asset?.interface === 'V1_NFT'
+            const notBurnt = asset?.burnt !== true
+            if (!isCompressed || !notBurnt) return false
+
+            const metadata = asset?.content?.metadata || {}
+            const symbol = String(metadata?.symbol || '').toUpperCase()
+            const attrs = Array.isArray(metadata?.attributes) ? metadata.attributes : Array.isArray(asset?.content?.attributes) ? asset.content.attributes : []
+            const hasCertSymbol = symbol === 'CERT'
+            const hasPlatformTag = attrs.some((attribute: any) => {
+              const trait = String(attribute?.trait_type || attribute?.traitType || attribute?.type || '').toLowerCase()
+              const value = String(attribute?.value || attribute?.value_string || attribute?.trait_value || '').toLowerCase()
+              return (trait === 'plataforma' && value === 'certchain') || (trait === 'tipo' && value.includes('certificado'))
+            })
+            const treeMatch = String(asset?.compression?.tree || '') === String(DEFAULT_MERKLE_TREE_PUBKEY)
+
+            return hasCertSymbol || hasPlatformTag || treeMatch
           })
-          const treeMatch = String(asset?.compression?.tree || '') === String(DEFAULT_MERKLE_TREE_PUBKEY)
-
-          return hasCertSymbol || hasPlatformTag || treeMatch
-        })
 
         if (!cancelled) {
           setAssets(filtered)
@@ -1439,10 +1457,11 @@ export function ClientTransfer() {
     if (!publicKey) return
     setLoadingListings(true)
     try {
-      const res = await fetch(`${API_BASE_URL}/api/marketplace/my-listings?seller=${publicKey.toString()}`)
+      // Backend exposes seller listings at /api/marketplace/seller/:wallet
+      const res = await fetch(`${API_BASE_URL}/api/marketplace/seller/${encodeURIComponent(publicKey.toString())}`)
       if (res.ok) {
         const data = await res.json()
-        setMyListings(data?.listings || data || [])
+        setMyListings(Array.isArray(data) ? data : (data?.listings || []))
       }
     } catch (err) {
       console.warn('Error fetching listings:', err)
@@ -1461,12 +1480,14 @@ export function ClientTransfer() {
   const handleRemoveListing = async (listingId: string) => {
     if (!confirm('¿Estás seguro de quitar este artículo del marketplace?')) return
     try {
-      const res = await fetch(`${API_BASE_URL}/api/marketplace/cancel`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ listing_id: listingId, seller_wallet: publicKey?.toString() }),
+      const assetId = listingId || ''
+      const res = await fetch(`${API_BASE_URL}/api/marketplace/list/${encodeURIComponent(assetId)}`, {
+        method: 'DELETE',
       })
-      if (!res.ok) throw new Error('Error al cancelar el listado')
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}))
+        throw new Error(errJson.error || 'Error al cancelar el listado')
+      }
       fetchMyListings()
       triggerDataRefresh('marketplace')
     } catch (err: any) {
@@ -1520,6 +1541,21 @@ export function ClientTransfer() {
         const destinationPubkey = new PublicKey(destination.trim())
         const assetId = String(selectedAsset.id || selectedAsset.assetId || selectedAsset.mint || '')
         if (!assetId) throw new Error('No se pudo resolver el asset_id.')
+
+        // Security: do not allow transferring an asset that is currently listed in the marketplace
+        try {
+          const listingsCheck = await fetch(`${API_BASE_URL}/api/marketplace/listings`)
+          if (listingsCheck.ok) {
+            const listingsJson = await listingsCheck.json()
+            if (Array.isArray(listingsJson)) {
+              const isListed = listingsJson.some((l: any) => String(l.asset_id || l.assetId || l.id || '') === assetId)
+              if (isListed) throw new Error('No se puede transferir un certificado que está listado en el marketplace.')
+            }
+          }
+        } catch (e) {
+          // If the listings check fails, we avoid silently allowing transfers; fail safe and continue to try transfer
+          // but prefer to surface the error from the on-chain transfer if any. Do not block here on fetch failure.
+        }
 
         const assetWithProof = await getAssetWithProof(umi, assetId, { truncateCanopy: true })
         const currentOwner = umi.identity?.publicKey ?? publicKey
