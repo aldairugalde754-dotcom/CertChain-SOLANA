@@ -41,3 +41,28 @@ export const SOLANA_ENDPOINT =
   process.env.REACT_APP_SOLANA_RPC ||
   process.env.VITE_SOLANA_RPC ||
   'https://api.devnet.solana.com';
+
+// Program IDs and related constants (export as PublicKey for consumers)
+import { PublicKey, SystemProgram } from '@solana/web3.js';
+
+function getEnvVar(name: string) {
+  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[name]) return import.meta.env[name];
+  if (typeof process !== 'undefined' && (process.env as any)[name]) return (process.env as any)[name];
+  return undefined;
+}
+
+export const CERTCHAIN_PROGRAM_ID = new PublicKey(
+  getEnvVar('VITE_CERTCHAIN_PROGRAM_ID') || getEnvVar('REACT_APP_CERTCHAIN_PROGRAM_ID') || '3dhSvYubK3XUhE5QdfYTgxJnc3rCdyU5Nt1TcjeC6K6a'
+);
+
+export const BUBBLEGUM_PROGRAM_ID = new PublicKey(
+  getEnvVar('VITE_BUBBLEGUM_PROGRAM_ID') || getEnvVar('REACT_APP_BUBBLEGUM_PROGRAM_ID') || SystemProgram.programId.toBase58()
+);
+
+export const COMPRESSION_PROGRAM_ID = new PublicKey(
+  getEnvVar('VITE_COMPRESSION_PROGRAM_ID') || getEnvVar('REACT_APP_COMPRESSION_PROGRAM_ID') || SystemProgram.programId.toBase58()
+);
+
+export const NOOP_PROGRAM_ID = new PublicKey(
+  getEnvVar('VITE_NOOP_PROGRAM_ID') || getEnvVar('REACT_APP_NOOP_PROGRAM_ID') || SystemProgram.programId.toBase58()
+);
