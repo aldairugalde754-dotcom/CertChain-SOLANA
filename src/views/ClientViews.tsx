@@ -702,8 +702,10 @@ export function ClientAuctions() {
             <div style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: '#8a93b8' }}>Vuelve más tarde o crea una nueva subasta desde tu cuenta empresarial.</div>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 20 }}>
-          {itemsToDisplay.map((auction: any) => {
+          <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 20 }}>
+                {itemsToDisplay.map((auction: any) => {
             const idKey = String(auction.id || auction.asset_id || auction._id || '')
             const title = auction.title || auction.name || `Certificado ${auction.asset_id || auction.id}`
             const currentBidVal = auction.current_bid !== undefined ? auction.current_bid : auction.currentBid
@@ -730,14 +732,15 @@ export function ClientAuctions() {
                   transition: 'all 0.3s ease'
                 }}
               >
-                <div style={{ position: 'relative', height: 160, background: '#0a0c18' }}>
-                  <img
-                    src={imageUrl}
-                    alt={title}
-                    onError={(e) => { (e.currentTarget as HTMLImageElement).src = DEFAULT_ASSET_IMAGE }}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.85 }}
-                  />
-                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(7,9,15,0.85) 0%, transparent 50%)' }} />
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0a0c18' }}>
+                  <div style={{ width: '100%', maxWidth: '100%', aspectRatio: '1/1', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <img
+                      src={imageUrl}
+                      alt={title}
+                      onError={(e) => { (e.currentTarget as HTMLImageElement).src = DEFAULT_ASSET_IMAGE }}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center', opacity: 0.95 }}
+                    />
+                  </div>
                   <div style={{ position: 'absolute', top: 10, left: 10, display: 'flex', gap: 6 }}>
                     {isEnding ? <Badge color="#f59e0b">Terminando</Badge> : <Badge color="#22c55e">En vivo</Badge>}
                     {auction.bids !== undefined && <Badge color="#8a93b8">{auction.bids} pujas</Badge>}
@@ -761,7 +764,7 @@ export function ClientAuctions() {
                               borderRadius: 4,
                               minWidth: 28,
                               textAlign: 'center',
-                              border: `1px solid ${isEnding ? 'rgba(245,158,11,0.2)' : 'rgba(0,200,255,0.2)'}`
+                              border: `1px solid ${isEnding ? 'rgba(245,158,11,0.2)' : 'rgba(0,200,255,0.2)'}
                             }}
                           >
                             {val}
@@ -780,14 +783,10 @@ export function ClientAuctions() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                       <div style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485' }}>Certificado</div>
-                      <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, color: '#dde3f0' }}>{idKey ? (idKey.length > 12 ? `${idKey.slice(0,8)}...${idKey.slice(-4)}` : idKey) : 'N/A'}</div>
+                      <div style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: '#dde3f0', fontWeight: 600, wordBreak: 'break-all' }}>{idKey || 'N/A'}</div>
                       <div style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: '#8a93b8', marginLeft: 10 }}>{auction.company || auction.seller_name || (auction.seller_wallet ? String(auction.seller_wallet).slice(0,6) + '...' : '')}</div>
                     </div>
-                    <div>
-                      <a href={`${window.location.origin}/traceability/${encodeURIComponent(idKey)}`} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
-                        <button className="btn-ghost" style={{ padding: '6px 10px', fontSize: 11 }}>Historial</button>
-                      </a>
-                    </div>
+                    <div />
                   </div>
 
                   {/* Price Info - Enhanced */}
@@ -858,7 +857,7 @@ export function ClientAuctions() {
 
                       return (
                         <div>
-                          <div style={{ display: 'flex', gap: 8, marginBottom: validationError || bidErrorMsg ? 8 : 0 }}>
+                          <div style={{ display: 'flex', gap: 8, marginBottom: validationError || bidErrorMsg ? 8 : 0, alignItems: 'center' }}>
                             <input
                               className="input-base"
                               type="number"
@@ -876,6 +875,11 @@ export function ClientAuctions() {
                               }}
                               disabled={isEnding && timeLeftObj.h === '00' && timeLeftObj.m === '00' && timeLeftObj.s === '00'}
                             />
+
+                            <a href={`${window.location.origin}/traceability/${encodeURIComponent(idKey)}`} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
+                              <button className="btn-ghost" style={{ padding: '8px 10px', fontSize: 11 }}>Historial</button>
+                            </a>
+
                             <button
                               className={isEnding ? 'btn-gold' : 'btn-primary'}
                               style={{
@@ -916,88 +920,42 @@ export function ClientAuctions() {
                 </div>
               </div>
             )
-          })}
+                })}
+              </div>
+            </div>
+
+            {/* Right sidebar: compact 'Mis Pujas' */}
+            <div style={{ width: 360, minWidth: 280 }}>
+              <SectionTitle sub="Registro compacto de tus pujas">Mis Pujas</SectionTitle>
+              <div className="glow-border" style={{ background: '#0c0f1d', borderRadius: 12, padding: 8, maxHeight: 520, overflowY: 'auto' }}>
+                {userBidHistoryLoading ? (
+                  <div style={{ padding: 12, color: '#8a93b8', fontFamily: 'JetBrains Mono', fontSize: 12 }}>Cargando historial...</div>
+                ) : userBidHistory.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {userBidHistory.map((bid: any) => (
+                      <div key={`${bid.asset_id}-${bid.bid_hash || bid.id}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 10px', borderRadius: 8, background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.02)' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontFamily: 'Rajdhani', fontSize: 13, color: '#dde3f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{bid.title || `Subasta ${bid.asset_id}`}</div>
+                          <div style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: '#8a93b8' }}>{bid.created_at ? new Date(bid.created_at).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' }) : 'Sin fecha'}</div>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, marginLeft: 8 }}>
+                          <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, color: '#00c8ff' }}>${Number(bid.bid_amount || 0).toFixed(2)}</div>
+                          <a href={`${window.location.origin}/traceability/${encodeURIComponent(bid.asset_id)}`} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
+                            <button className="btn-ghost" style={{ padding: '6px 8px', fontSize: 11 }}>Certificado</button>
+                          </a>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ padding: 12, color: '#8a93b8', fontFamily: 'JetBrains Mono', fontSize: 12 }}>No hay pujas registradas.</div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
-        {/* My bids table - Enhanced */}
-        {userBidHistoryLoading ? (
-          <div style={{ marginTop: 40, color: '#8a93b8', fontFamily: 'JetBrains Mono', fontSize: 12 }}>
-            Cargando historial de pujas...
-          </div>
-        ) : userBidHistory.length > 0 ? (
-          <div style={{ marginTop: 40 }}>
-            <SectionTitle sub="Registro completo por subasta, monto y hash de auditoría">Mis Pujas</SectionTitle>
-            <div className="glow-border" style={{ background: '#0c0f1d', borderRadius: 12, overflow: 'hidden' }}>
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Subasta</th>
-                    <th>Monto (USD)</th>
-                    <th>Fecha</th>
-                    <th>Acción</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {userBidHistory.map((bid: any) => (
-                    <tr key={`${bid.asset_id}-${bid.bid_hash || bid.id}`}>
-                      <td style={{ fontWeight: 500 }}>{bid.title || `Subasta ${bid.asset_id}`}</td>
-                      <td style={{ fontFamily: 'JetBrains Mono', color: '#00c8ff', fontWeight: 600 }}>
-                        ${Number(bid.bid_amount || 0).toFixed(2)}
-                      </td>
-                      <td style={{ fontFamily: 'JetBrains Mono', color: '#8a93b8' }}>
-                        {bid.created_at ? new Date(bid.created_at).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' }) : 'Sin fecha'}
-                      </td>
-                      <td style={{ maxWidth: 220 }}>
-                        <a href={`${window.location.origin}/traceability/${encodeURIComponent(bid.asset_id)}`} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
-                          <button className="btn-ghost" style={{ padding: '6px 10px', fontSize: 11 }}>Ver certificado</button>
-                        </a>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        ) : placedBids.length > 0 && (
-          <div style={{ marginTop: 40 }}>
-            <SectionTitle sub="Historial de pujas en esta sesión">Mis Pujas</SectionTitle>
-            <div className="glow-border" style={{ background: '#0c0f1d', borderRadius: 12, overflow: 'hidden' }}>
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Producto</th>
-                    <th>Mi Puja</th>
-                    <th>Estado</th>
-                    <th>Posición</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {placedBids.map(id => {
-                    const a = auctions.find(x => String(x.id || x.asset_id || x._id) === String(id)) || MOCK_AUCTIONS.find(x => String(x.id) === String(id))!
-                    if (!a) return null
-                    return (
-                      <tr key={id}>
-                        <td style={{ fontWeight: 500 }}>{a.name || a.title || 'Producto'}</td>
-                        <td style={{ fontFamily: 'JetBrains Mono', color: '#00c8ff', fontWeight: 600 }}>
-                          ${bidAmount[id]}
-                        </td>
-                        <td>
-                          <Badge color="#22c55e">✓ Registrada</Badge>
-                        </td>
-                        <td style={{ fontFamily: 'JetBrains Mono', color: '#5a6485' }}>
-                          <span style={{ background: 'rgba(0,200,255,0.1)', padding: '2px 8px', borderRadius: 4 }}>
-                            🏆 #1
-                          </span>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+        {/* 'Mis Pujas' ahora aparece en el sidebar derecho (versión compacta). */}
       </div>
     </div>
   )
