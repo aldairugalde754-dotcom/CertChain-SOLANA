@@ -880,6 +880,35 @@ export function CompanyAuctionDash() {
     return <Badge color="#22c55e">En vivo</Badge>;
   };
 
+  const [countdowns, setCountdowns] = useState<Record<string, { h: string; m: string; s: string }>>({})
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCountdowns(() => {
+        const updated: Record<string, { h: string; m: string; s: string }> = {}
+        auctions.forEach((a: any) => {
+          const idKey = String(a.id || a.asset_id || '')
+          if (!idKey || !a.end_time) return
+          const diffMs = new Date(a.end_time).getTime() - Date.now()
+          if (diffMs <= 0) {
+            updated[idKey] = { h: '00', m: '00', s: '00' }
+          } else {
+            const h = Math.floor(diffMs / 3600000)
+            const m = Math.floor((diffMs % 3600000) / 60000)
+            const s = Math.floor((diffMs % 60000) / 1000)
+            updated[idKey] = {
+              h: String(h).padStart(2, '0'),
+              m: String(m).padStart(2, '0'),
+              s: String(s).padStart(2, '0')
+            }
+          }
+        })
+        return updated
+      })
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [auctions])
+
   return (
     <div style={{ flex: 1, overflow: 'auto' }}>
       <TopBar
@@ -955,11 +984,18 @@ export function CompanyAuctionDash() {
             <div style={{ gridColumn: '1 / -1', padding: 20 }}>No tienes subastas registradas</div>
           ) : (
             auctions.map((a: any) => {
-              const timeLeft = new Date(a.end_time).getTime() - Date.now();
-              const hours = Math.max(0, Math.floor(timeLeft / (1000 * 60 * 60)));
-              const minutes = Math.max(0, Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60)));
-              const seconds = Math.max(0, Math.floor((timeLeft % (1000 * 60)) / 1000));
-              const ended = timeLeft <= 0;
+              const idKey = String(a.id || a.asset_id || '');
+              const diffMs = a.end_time ? Math.max(0, new Date(a.end_time).getTime() - Date.now()) : 0;
+              const h = Math.floor(diffMs / 3600000);
+              const m = Math.floor((diffMs % 3600000) / 60000);
+              const s = Math.floor((diffMs % 60000) / 1000);
+              const fallbackObj = {
+                h: String(h).padStart(2, '0'),
+                m: String(m).padStart(2, '0'),
+                s: String(s).padStart(2, '0')
+              };
+              const timeLeftObj = countdowns[idKey] || fallbackObj;
+              const ended = a.end_time ? new Date(a.end_time).getTime() <= Date.now() : false;
               const hasBids = Boolean(a.current_bidder_wallet);
               const imageUrl = resolveAssetImage(a) || DEFAULT_ASSET_IMAGE;
               return (
@@ -988,7 +1024,7 @@ export function CompanyAuctionDash() {
                       <div style={{ background: 'rgba(124,58,237,0.06)', border: '1px solid rgba(124,58,237,0.15)', borderRadius: 8, padding: '8px 10px' }}>
                         <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, color: '#5a6485', textTransform: 'uppercase' }}>Estado / Tiempo</div>
                         <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 13, color: ended ? (hasBids ? '#eab308' : '#a0aec0') : '#dde3f0' }}>
-                          {ended ? (hasBids ? 'Ganada (Esperando Pago)' : 'Devuelta a Wallet') : `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`}
+                          {ended ? (hasBids ? 'Ganada (Esperando Pago)' : 'Devuelta a Wallet') : `${timeLeftObj.h}:${timeLeftObj.m}:${timeLeftObj.s}`}
                         </div>
                       </div>
                     </div>

@@ -1,1 +1,0 @@
-import{c as e,s as t}from"./index-CGTa07pn.js";export{t as createUmi,e as defaultPlugins};
