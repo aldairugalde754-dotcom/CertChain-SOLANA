@@ -1386,7 +1386,7 @@ export function ClientWallet() {
               const inMarketplace = marketplaceListings.some((l: any) => String(l.asset_id || l.assetId || l.id || '') === assetId)
               const inAuction = auctionListings.some((a: any) => String(a.asset_id || a.assetId || a.id || '') === assetId)
 
-              const traceUrl = `${window.location.origin}/traceability/${encodeURIComponent(assetId)}`
+              const traceUrl = `${window.location.origin}/verify/${encodeURIComponent(assetId)}`
 
               return (
                 <div

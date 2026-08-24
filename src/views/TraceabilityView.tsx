@@ -339,7 +339,7 @@ export default function TraceabilityView({ assetId: assetIdProp }: { assetId?: s
                   onClick={() => navigator.clipboard.writeText(`${window.location.origin}/verify/${encodeURIComponent(searchId)}`)}
                   style={{ padding: '10px 16px', fontSize: 12 }}
                 >
-                  COMPARTIR FICHA PÚBLICA
+                  COPIAR ENLACE DE FICHA PÚBLICA
                 </button>
                 <a href={explorerUrl(searchId)} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
                   <button className="btn-ghost" style={{ padding: '10px 16px', fontSize: 12 }}>VER EN EXPLORER</button>
