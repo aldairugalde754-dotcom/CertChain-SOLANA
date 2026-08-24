@@ -677,9 +677,11 @@ export function CompanyAuctionDash() {
 
   const RPC_URL = process.env.REACT_APP_DAS_RPC || process.env.VITE_DAS_RPC || 'https://devnet.helius-rpc.com/?api-key=568c37da-25db-4b18-b55c-143df09820c1'
 
-  const refreshAuctions = async () => {
+  const refreshAuctions = async (isSilent = false) => {
     if (!publicKey) return
-    setLoading(true)
+    if (!isSilent && auctions.length === 0) {
+      setLoading(true)
+    }
     try {
       const [rows, statsJson] = await Promise.all([
         fetch(`${API_BASE_URL}/api/auctions/seller/${publicKey.toString()}`).then(r => r.ok ? r.json() : []),
@@ -697,14 +699,16 @@ export function CompanyAuctionDash() {
       setAuctions([])
       setError(String(e))
     } finally {
-      setLoading(false)
+      if (!isSilent) {
+        setLoading(false)
+      }
     }
   }
 
   useEffect(() => {
     if (!publicKey) return
 
-    const loadCompanyData = async () => {
+    const loadCompanyData = async (isSilent = false) => {
       try {
         const rows = await fetch(`${API_BASE_URL}/api/marketplace/listings`).then(r => r.ok ? r.json() : []).catch(() => [])
         const ids = new Set((Array.isArray(rows) ? rows : []).map((row: any) => String(row.asset_id || row.id || '')).filter(Boolean))
@@ -736,15 +740,23 @@ export function CompanyAuctionDash() {
         setOwnedCerts([])
       }
 
-      await refreshAuctions()
+      await refreshAuctions(isSilent)
     }
 
-    loadCompanyData()
+    loadCompanyData(false)
+
+    const pollInterval = setInterval(() => {
+      loadCompanyData(true)
+    }, 2000)
 
     const off = subscribeToDataRefresh(() => {
-      loadCompanyData()
+      loadCompanyData(true)
     }, ['all', 'inventory', 'marketplace', 'auctions'])
-    return () => off()
+
+    return () => {
+      clearInterval(pollInterval)
+      off()
+    }
   }, [publicKey])
 
   const handleCreateAuction = async (e: React.FormEvent) => {

@@ -442,10 +442,59 @@ export function ClientAuctions() {
   const [userBidHistory, setUserBidHistory] = useState<any[]>([])
   const [userBidHistoryLoading, setUserBidHistoryLoading] = useState(false)
 
+  // Refresco silencioso de subastas en tiempo real sin reiniciar la página ni unmount de componentes
+  async function fetchAuctions(isSilent = false) {
+    if (!isSilent && auctions.length === 0) {
+      setLoading(true)
+    }
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/auctions/listings`)
+      if (res.ok) {
+        const data = await res.json()
+        if (Array.isArray(data)) {
+          setAuctions(data)
+          const newCountdowns: Record<string, { h: string; m: string; s: string }> = {}
+          data.forEach((auction: any) => {
+            const idKey = String(auction.id || auction.asset_id || auction._id || '')
+            if (auction.end_time) {
+              const diffMs = new Date(auction.end_time).getTime() - Date.now()
+              const h = Math.max(0, Math.floor(diffMs / 3600000))
+              const m = Math.max(0, Math.floor((diffMs % 3600000) / 60000))
+              const s = Math.max(0, Math.floor((diffMs % 60000) / 1000))
+              newCountdowns[idKey] = {
+                h: String(h).padStart(2, '0'),
+                m: String(m).padStart(2, '0'),
+                s: String(s).padStart(2, '0')
+              }
+            }
+          })
+          setCountdowns(prev => ({ ...newCountdowns, ...prev }))
+        }
+      }
+    } catch (e) {
+      console.warn('Could not fetch backend auctions', e)
+    } finally {
+      if (!isSilent) {
+        setLoading(false)
+      }
+    }
+  }
+
   useEffect(() => {
-    fetchAuctions()
-    const interval = setInterval(fetchAuctions, 30000)
-    return () => clearInterval(interval)
+    fetchAuctions(false)
+    // Polling estático en tiempo real cada 1.5s (1500ms) para capturar los últimos segundos críticos
+    const pollInterval = setInterval(() => {
+      fetchAuctions(true)
+    }, 1500)
+
+    const off = subscribeToDataRefresh(() => {
+      fetchAuctions(true)
+    }, ['all', 'auctions'])
+
+    return () => {
+      clearInterval(pollInterval)
+      off()
+    }
   }, [])
 
   useEffect(() => {
@@ -455,15 +504,17 @@ export function ClientAuctions() {
     }
 
     let mounted = true
-    async function fetchUserBidHistory() {
+    async function fetchUserBidHistory(isSilent = false) {
       const walletAddress = publicKey?.toString()
       if (!walletAddress) {
         setUserBidHistory([])
-        setUserBidHistoryLoading(false)
+        if (!isSilent) setUserBidHistoryLoading(false)
         return
       }
 
-      setUserBidHistoryLoading(true)
+      if (!isSilent && userBidHistory.length === 0) {
+        setUserBidHistoryLoading(true)
+      }
       try {
         const res = await fetch(`${API_BASE_URL}/api/auctions/my-bids/${walletAddress}`)
         if (!res.ok) throw new Error('No se pudo cargar el historial')
@@ -471,32 +522,39 @@ export function ClientAuctions() {
         if (mounted) setUserBidHistory(Array.isArray(data) ? data : [])
       } catch (error) {
         console.warn('Could not fetch user auction bids', error)
-        if (mounted) setUserBidHistory([])
+        if (mounted && !isSilent) setUserBidHistory([])
       } finally {
-        if (mounted) setUserBidHistoryLoading(false)
+        if (mounted && !isSilent) setUserBidHistoryLoading(false)
       }
     }
 
-    fetchUserBidHistory()
-    return () => { mounted = false }
+    fetchUserBidHistory(false)
+    const historyInterval = setInterval(() => {
+      fetchUserBidHistory(true)
+    }, 3000)
+
+    return () => {
+      mounted = false
+      clearInterval(historyInterval)
+    }
   }, [publicKey?.toString()])
 
   useEffect(() => {
     const interval = setInterval(() => {
       setCountdowns(prevCountdowns => {
         const updated = { ...prevCountdowns }
-        Object.keys(updated).forEach(key => {
-          const auction = auctions.find(a => String(a.id || a.asset_id || a._id) === String(key))
-          if (!auction || !auction.end_time) return
+        auctions.forEach(auction => {
+          const idKey = String(auction.id || auction.asset_id || auction._id || '')
+          if (!idKey || !auction.end_time) return
 
           const diffMs = new Date(auction.end_time).getTime() - Date.now()
           if (diffMs <= 0) {
-            updated[key] = { h: '00', m: '00', s: '00' }
+            updated[idKey] = { h: '00', m: '00', s: '00' }
           } else {
             const h = Math.floor(diffMs / 3600000)
             const m = Math.floor((diffMs % 3600000) / 60000)
             const s = Math.floor((diffMs % 60000) / 1000)
-            updated[key] = {
+            updated[idKey] = {
               h: String(h).padStart(2, '0'),
               m: String(m).padStart(2, '0'),
               s: String(s).padStart(2, '0')
@@ -508,36 +566,6 @@ export function ClientAuctions() {
     }, 1000)
     return () => clearInterval(interval)
   }, [auctions])
-
-  async function fetchAuctions() {
-    setLoading(true)
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/auctions/listings`)
-      if (res.ok) {
-        const data = await res.json()
-        if (Array.isArray(data) && data.length > 0) {
-          setAuctions(data)
-          const newCountdowns: Record<string, { h: string; m: string; s: string }> = {}
-          data.forEach((auction: any) => {
-            const idKey = String(auction.id || auction.asset_id || auction._id || '')
-            if (auction.end_time) {
-              const diffMs = new Date(auction.end_time).getTime() - Date.now()
-              const h = Math.max(0, Math.floor(diffMs / 3600000))
-              const m = Math.max(0, Math.floor((diffMs % 3600000) / 60000))
-              const s = Math.max(0, Math.floor((diffMs % 60000) / 1000))
-              newCountdowns[idKey] = { h: String(h).padStart(2, '0'), m: String(m).padStart(2, '0'), s: String(s).padStart(2, '0') }
-            }
-          })
-          setCountdowns(newCountdowns)
-          return
-        }
-      }
-    } catch (e) {
-      console.warn('Could not fetch backend auctions', e)
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const handleBid = async (id: string, assetId?: string, currentPrice?: number) => {
     const amountStr = bidAmount[id]
@@ -582,10 +610,12 @@ export function ClientAuctions() {
           throw new Error(errJson.error || 'Error al enviar puja')
         }
         setBidSuccess(prev => ({ ...prev, [id]: true }))
+        setBidAmount(prev => ({ ...prev, [id]: '' }))
         setTimeout(() => {
           setBidSuccess(prev => ({ ...prev, [id]: false }))
         }, 3000)
-        fetchAuctions()
+        await fetchAuctions(true)
+        triggerDataRefresh('auctions')
         const walletAddress = publicKey?.toString()
         if (walletAddress) {
           const historyRes = await fetch(`${API_BASE_URL}/api/auctions/my-bids/${walletAddress}`)
@@ -689,24 +719,72 @@ export function ClientAuctions() {
       triggerDataRefresh('auctions')
       triggerDataRefresh('inventory')
       triggerDataRefresh('all')
-      fetchAuctions()
+      await fetchAuctions(true)
     } catch (err: any) {
       console.error('Error claiming auction:', err)
       setBidError(prev => ({ ...prev, [auctionKey]: err.message || String(err) }))
     }
   }
 
-  const itemsToDisplay = auctions
+  const userWalletStr = publicKey ? publicKey.toString().toLowerCase() : ''
+
+  // REGLA CRÍTICA DE SUBASTAS:
+  // Al terminarse una subasta, debe desaparecer/ocultarse para TODOS los usuarios salvo para el ganador (quien debe reclamar y pagar).
+  const itemsToDisplay = auctions.filter((auction: any) => {
+    const isEnded = auction.end_time
+      ? (new Date(auction.end_time).getTime() <= Date.now())
+      : (auction.status === 'ended' || auction.status === 'sold')
+
+    const winnerWallet = (auction.current_bidder_wallet || '').toString().toLowerCase()
+    const isWinner = Boolean(userWalletStr && winnerWallet && userWalletStr === winnerWallet)
+
+    if (isEnded) {
+      // Ocultar la subasta a todos EXCEPTO al ganador
+      return isWinner
+    }
+
+    // Subastas activas -> visibles para todos
+    return true
+  })
+
+  const liveAuctionsCount = itemsToDisplay.filter((a: any) => {
+    const isEnded = a.end_time ? (new Date(a.end_time).getTime() <= Date.now()) : (a.status === 'ended')
+    return !isEnded
+  }).length
+
+  const wonPendingCount = itemsToDisplay.filter((a: any) => {
+    const isEnded = a.end_time ? (new Date(a.end_time).getTime() <= Date.now()) : (a.status === 'ended')
+    const winnerWallet = (a.current_bidder_wallet || '').toString().toLowerCase()
+    return isEnded && Boolean(userWalletStr && winnerWallet && userWalletStr === winnerWallet)
+  }).length
 
   return (
     <div style={{ flex: 1, overflow: 'auto' }}>
-      <TopBar title="Subastas en Vivo" subtitle="Participa en subastas de productos certificados" />
+      <TopBar title="Subastas en Vivo" subtitle="Participa en subastas de productos certificados en tiempo real" />
       <div style={{ padding: '24px 28px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
-          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e', animation: 'pulse 2s infinite' }} />
-          <span style={{ fontFamily: 'JetBrains Mono', fontSize: 11, color: '#22c55e', letterSpacing: '0.08em', fontWeight: 600 }}>
-            {itemsToDisplay.length} SUBASTAS ACTIVAS
-          </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e', animation: 'pulse 2s infinite' }} />
+            <span style={{ fontFamily: 'JetBrains Mono', fontSize: 11, color: '#22c55e', letterSpacing: '0.08em', fontWeight: 600 }}>
+              {liveAuctionsCount} SUBASTAS EN VIVO
+            </span>
+          </div>
+          <span style={{ color: 'rgba(255,255,255,0.15)' }}>•</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: '#00c8ff', background: 'rgba(0,200,255,0.08)', padding: '2px 8px', borderRadius: 4, border: '1px solid rgba(0,200,255,0.2)' }}>
+              ⚡ TIEMPO REAL ACTIVO (1.5s)
+            </span>
+          </div>
+          {wonPendingCount > 0 && (
+            <>
+              <span style={{ color: 'rgba(255,255,255,0.15)' }}>•</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontFamily: 'JetBrains Mono', fontSize: 11, color: '#eab308', fontWeight: 700, background: 'rgba(234,179,8,0.12)', padding: '2px 8px', borderRadius: 4, border: '1px solid rgba(234,179,8,0.3)' }}>
+                  🏆 {wonPendingCount} {wonPendingCount === 1 ? 'SUBASTA GANADA (PENDIENTE RECLAMO)' : 'SUBASTAS GANADAS (PENDIENTES)'}
+                </span>
+              </div>
+            </>
+          )}
         </div>
 
         {loading ? (
@@ -722,7 +800,7 @@ export function ClientAuctions() {
           /* Ancho ajustado para panel lateral de 220px */
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 220px', gap: 18, alignItems: 'start' }}>
             
-            {/* Grilla principal de 3 subastas horizontales */}
+            {/* Grilla principal de subastas horizontales */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
               {itemsToDisplay.map((auction: any) => {
                 const idKey = String(auction.id || auction.asset_id || auction._id || '')
@@ -734,7 +812,10 @@ export function ClientAuctions() {
                 const displayBid = Number(currentBidVal || startingVal || 0).toFixed(2)
                 const minNextBid = Number(currentBidVal || startingVal || 0) * 1.05
                 const imageUrl = resolveAssetImage(auction) || auction.image || DEFAULT_ASSET_IMAGE
-                const isEnding = auction.status === 'ending'
+                const isEnded = auction.end_time ? (new Date(auction.end_time).getTime() <= Date.now()) : (auction.status === 'ended')
+                const winnerWallet = (auction.current_bidder_wallet || '').toString().toLowerCase()
+                const isWinner = Boolean(userWalletStr && winnerWallet && userWalletStr === winnerWallet)
+                const isEnding = !isEnded && (countdowns[idKey]?.h === '00' && Number(countdowns[idKey]?.m || 0) < 15)
                 const timeLeftObj = countdowns[idKey] || { h: '00', m: '00', s: '00' }
                 const bidErrorMsg = bidError[idKey] || ''
                 const validationError = bidValidation[idKey] || ''
@@ -746,13 +827,14 @@ export function ClientAuctions() {
                     key={idKey}
                     className="card-hover"
                     style={{
-                      background: '#0c0f1d',
-                      border: `1px solid ${isEnding ? 'rgba(245,158,11,0.3)' : 'rgba(0,200,255,0.12)'}`,
+                      background: isEnded ? 'rgba(234,179,8,0.04)' : '#0c0f1d',
+                      border: `1px solid ${isEnded ? 'rgba(234,179,8,0.4)' : isEnding ? 'rgba(245,158,11,0.3)' : 'rgba(0,200,255,0.12)'}`,
                       borderRadius: 10,
                       overflow: 'hidden',
-                      boxShadow: '0 4px 18px rgba(0,0,0,0.4)',
+                      boxShadow: isEnded ? '0 0 20px rgba(234,179,8,0.15)' : '0 4px 18px rgba(0,0,0,0.4)',
                       display: 'flex',
-                      flexDirection: 'column'
+                      flexDirection: 'column',
+                      transition: 'all 0.3s ease',
                     }}
                   >
                     {/* Imagen y Badges */}
@@ -764,11 +846,11 @@ export function ClientAuctions() {
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       />
                       
-                      <div style={{ position: 'absolute', top: 8, left: 8 }}>
+                      <div style={{ position: 'absolute', top: 8, left: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                         <span style={{
-                          background: isEnding ? '#d97706' : '#16a34a',
-                          color: '#ffffff',
-                          fontWeight: 700,
+                          background: isEnded ? '#eab308' : isEnding ? '#d97706' : '#16a34a',
+                          color: isEnded ? '#000000' : '#ffffff',
+                          fontWeight: 800,
                           fontSize: 10,
                           padding: '3px 8px',
                           borderRadius: 4,
@@ -776,7 +858,7 @@ export function ClientAuctions() {
                           letterSpacing: '0.05em',
                           boxShadow: '0 2px 6px rgba(0,0,0,0.6)'
                         }}>
-                          {isEnding ? 'TERMINANDO' : 'EN VIVO'}
+                          {isEnded ? '🏆 GANASTE ESTA SUBASTA' : isEnding ? 'TERMINANDO' : 'EN VIVO'}
                         </span>
                       </div>
 
@@ -790,34 +872,40 @@ export function ClientAuctions() {
                         backdropFilter: 'blur(6px)', 
                         padding: '6px 8px', 
                         borderRadius: 4,
-                        border: '1px solid rgba(0, 200, 255, 0.2)',
+                        border: `1px solid ${isEnded ? 'rgba(234, 179, 8, 0.3)' : 'rgba(0, 200, 255, 0.2)'}`,
                         boxShadow: '0 4px 10px rgba(0,0,0,0.6)'
                       }}>
                         <div style={{ display: 'flex', justifyContent: 'center', gap: 3, alignItems: 'center' }}>
-                          {[timeLeftObj.h, timeLeftObj.m, timeLeftObj.s].map((val: string, i: number) => (
-                            <span key={`${idKey}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                              <span style={{ 
-                                fontSize: 14, 
-                                fontWeight: 800, 
-                                color: '#00e5ff', 
-                                fontFamily: "'Share Tech Mono', 'Orbitron', 'JetBrains Mono', monospace",
-                                letterSpacing: '1px',
-                                background: 'rgba(0, 229, 255, 0.08)',
-                                padding: '1px 5px',
-                                borderRadius: 3,
-                                border: '1px solid rgba(0, 229, 255, 0.2)',
-                                textShadow: '0 0 6px rgba(0, 229, 255, 0.5)'
-                              }}>
-                                {val}
-                              </span>
-                              {i < 2 && <span style={{ color: '#00c8ff', fontFamily: "'Share Tech Mono', monospace", fontSize: 13, fontWeight: 700 }}>:</span>}
+                          {isEnded ? (
+                            <span style={{ fontFamily: 'JetBrains Mono', fontSize: 11, color: '#eab308', fontWeight: 700, letterSpacing: '0.05em' }}>
+                              SUBASTA FINALIZADA
                             </span>
-                          ))}
+                          ) : (
+                            [timeLeftObj.h, timeLeftObj.m, timeLeftObj.s].map((val: string, i: number) => (
+                              <span key={`${idKey}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                                <span style={{ 
+                                  fontSize: 14, 
+                                  fontWeight: 800, 
+                                  color: isEnding ? '#f59e0b' : '#00e5ff', 
+                                  fontFamily: "'Share Tech Mono', 'Orbitron', 'JetBrains Mono', monospace",
+                                  letterSpacing: '1px',
+                                  background: 'rgba(0, 229, 255, 0.08)',
+                                  padding: '1px 5px',
+                                  borderRadius: 3,
+                                  border: '1px solid rgba(0, 229, 255, 0.2)',
+                                  textShadow: '0 0 6px rgba(0, 229, 255, 0.5)'
+                                }}>
+                                  {val}
+                                </span>
+                                {i < 2 && <span style={{ color: '#00c8ff', fontFamily: "'Share Tech Mono', monospace", fontSize: 13, fontWeight: 700 }}>:</span>}
+                              </span>
+                            ))
+                          )}
                         </div>
                       </div>
                     </div>
 
-                    {/* Detalle y Botón Historial de Estilo Primario */}
+                    {/* Detalle y Botón Historial */}
                     <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'space-between' }}>
                       <div>
                         <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 15, color: '#f0f4f9', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -829,7 +917,6 @@ export function ClientAuctions() {
                             Cert: <span style={{ color: '#cbd5e1' }}>{shortCertId}</span>
                           </div>
                           
-                          {/* Botón Historial con estilo similar a PUJAR */}
                           <a 
                             href={`${window.location.origin}/traceability/${encodeURIComponent(traceId)}`} 
                             target="_blank" 
@@ -860,14 +947,14 @@ export function ClientAuctions() {
                         </div>
 
                         {/* Bloque Precios */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 10, padding: '6px 8px', background: 'rgba(0,200,255,0.04)', borderRadius: 6, border: '1px solid rgba(0,200,255,0.08)' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 10, padding: '6px 8px', background: isEnded ? 'rgba(234,179,8,0.08)' : 'rgba(0,200,255,0.04)', borderRadius: 6, border: `1px solid ${isEnded ? 'rgba(234,179,8,0.2)' : 'rgba(0,200,255,0.08)'}` }}>
                           <div>
-                            <div style={{ fontFamily: 'JetBrains Mono', fontSize: 8, color: '#64748b', textTransform: 'uppercase' }}>Actual</div>
-                            <div style={{ fontFamily: 'Rajdhani', fontWeight: 800, fontSize: 15, color: '#00c8ff' }}>${displayBid}</div>
+                            <div style={{ fontFamily: 'JetBrains Mono', fontSize: 8, color: '#64748b', textTransform: 'uppercase' }}>{isEnded ? 'Puja Ganadora' : 'Puja Actual'}</div>
+                            <div style={{ fontFamily: 'Rajdhani', fontWeight: 800, fontSize: 15, color: isEnded ? '#eab308' : '#00c8ff' }}>${displayBid}</div>
                           </div>
                           <div>
-                            <div style={{ fontFamily: 'JetBrains Mono', fontSize: 8, color: '#64748b', textTransform: 'uppercase' }}>Mín Siguiente</div>
-                            <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 14, color: '#22c55e' }}>${minNextBid.toFixed(2)}</div>
+                            <div style={{ fontFamily: 'JetBrains Mono', fontSize: 8, color: '#64748b', textTransform: 'uppercase' }}>{isEnded ? 'Estado' : 'Mín Siguiente'}</div>
+                            <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 13, color: '#22c55e' }}>{isEnded ? 'Ganada' : `$${minNextBid.toFixed(2)}`}</div>
                           </div>
                         </div>
                       </div>
@@ -875,17 +962,19 @@ export function ClientAuctions() {
                       {/* Acciones Pujar / Reclamar */}
                       {isSuccess ? (
                         <div style={{ padding: '6px', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 6, textAlign: 'center', color: '#22c55e', fontSize: 11, fontFamily: 'Rajdhani', fontWeight: 700 }}>
-                          ✓ PUJA ENVIADA
+                          ✓ PUJA ENVIADA (TIEMPO REAL)
                         </div>
                       ) : (() => {
-                        const endedLocal = auction.end_time ? (new Date(auction.end_time).getTime() <= Date.now()) : false
-                        const isWinnerLocal = publicKey && auction.current_bidder_wallet && String(auction.current_bidder_wallet) === String(publicKey.toString())
-
-                        if (endedLocal && isWinnerLocal) {
+                        if (isEnded && isWinner) {
                           return (
-                            <button className="btn-accent" style={{ width: '100%', padding: '6px', fontSize: 11 }} onClick={() => handleClaimAuction(auction)}>
-                              RECLAMAR Y PAGAR
-                            </button>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              <div style={{ padding: '4px 6px', background: 'rgba(234,179,8,0.15)', border: '1px solid rgba(234,179,8,0.3)', borderRadius: 4, textAlign: 'center', color: '#facc15', fontSize: 10, fontFamily: 'Rajdhani', fontWeight: 700 }}>
+                                ¡Eres el ganador! Reclama tu cNFT
+                              </div>
+                              <button className="btn-accent" style={{ width: '100%', padding: '7px 10px', fontSize: 11, fontWeight: 700 }} onClick={() => handleClaimAuction(auction)}>
+                                💳 RECLAMAR Y PAGAR
+                              </button>
+                            </div>
                           )
                         }
 
@@ -908,7 +997,7 @@ export function ClientAuctions() {
                                   width: '100%',
                                   border: validationError ? '1px solid #ef4444' : undefined
                                 }}
-                                disabled={isEnding && timeLeftObj.h === '00' && timeLeftObj.m === '00' && timeLeftObj.s === '00'}
+                                disabled={isEnded}
                               />
                               <button
                                 className={isEnding ? 'btn-gold' : 'btn-primary'}
