@@ -1364,8 +1364,21 @@ async function enrichAuctionRows(rows) {
   return mapped;
 }
 
+async function cleanupExpiredUnbidAuctions() {
+  try {
+    await db.execute(
+      `DELETE FROM auction_listings 
+       WHERE end_time <= NOW() 
+         AND (current_bidder_wallet IS NULL OR current_bidder_wallet = '')`
+    );
+  } catch (e) {
+    console.warn('Warning auto-cleaning expired unbid auctions:', e.message || e);
+  }
+}
+
 app.get('/api/auctions/listings', async (req, res) => {
   try {
+    await cleanupExpiredUnbidAuctions();
     const [rows] = await db.execute(
       `SELECT * FROM auction_listings ORDER BY created_at DESC`
     );
@@ -1379,6 +1392,7 @@ app.get('/api/auctions/listings', async (req, res) => {
 
 app.get('/api/auctions/seller/:wallet', async (req, res) => {
   try {
+    await cleanupExpiredUnbidAuctions();
     const wallet = req.params.wallet;
     const [rows] = await db.execute(
       `SELECT * FROM auction_listings WHERE seller_wallet = ? ORDER BY created_at DESC`,

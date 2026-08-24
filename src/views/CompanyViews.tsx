@@ -845,7 +845,13 @@ export function CompanyAuctionDash() {
 
   const activeAuctionIds = new Set(
     auctions
-      .filter((auction: any) => !!auction?.asset_id || !!auction?.id)
+      .filter((auction: any) => {
+        const isExpired = auction.end_time ? (new Date(auction.end_time).getTime() <= Date.now()) : false;
+        const hasBids = Boolean(auction.current_bidder_wallet);
+        // Si la subasta terminó sin pujas, no bloquea el activo y regresa al estado disponible de la wallet
+        if (isExpired && !hasBids) return false;
+        return true;
+      })
       .map((auction: any) => String(auction.asset_id || auction.id || ''))
       .filter(Boolean)
   );
@@ -863,8 +869,15 @@ export function CompanyAuctionDash() {
 
   const renderStatus = (auction: any) => {
     const isEnded = new Date(auction.end_time).getTime() <= Date.now();
-    const status = isEnded ? 'ended' : 'live';
-    return <Badge color={statusColor[status]}>{statusLabel[status]}</Badge>;
+    const hasBids = Boolean(auction.current_bidder_wallet);
+    if (isEnded) {
+      if (hasBids) {
+        return <Badge color="#eab308">Esperando Reclamo Ganador</Badge>;
+      } else {
+        return <Badge color="#5a6485">Devuelta a Wallet</Badge>;
+      }
+    }
+    return <Badge color="#22c55e">En vivo</Badge>;
   };
 
   return (
@@ -932,63 +945,66 @@ export function CompanyAuctionDash() {
           </div>
         )}
 
-        <SectionTitle sub="Todas tus subastas">Mis Subastas</SectionTitle>
+        <SectionTitle sub="Todas tus subastas activas y recientes">Mis Subastas</SectionTitle>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
           {loading ? (
             <div style={{ gridColumn: '1 / -1', padding: 20 }}>Cargando subastas...</div>
           ) : error ? (
             <div style={{ gridColumn: '1 / -1', padding: 20, color: 'salmon' }}>{error}</div>
-          ) : auctions.filter((a: any) => new Date(a.end_time).getTime() > Date.now()).length === 0 ? (
-            <div style={{ gridColumn: '1 / -1', padding: 20 }}>No tienes subastas activas</div>
-          ) : auctions.filter((a: any) => new Date(a.end_time).getTime() > Date.now()).map((a: any) => {
-                const timeLeft = new Date(a.end_time).getTime() - Date.now();
-                const hours = Math.max(0, Math.floor(timeLeft / (1000 * 60 * 60)));
-                const minutes = Math.max(0, Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60)));
-                const seconds = Math.max(0, Math.floor((timeLeft % (1000 * 60)) / 1000));
-                const ended = timeLeft <= 0;
-                const imageUrl = resolveAssetImage(a) || DEFAULT_ASSET_IMAGE;
-                return (
-                  <div key={a.id || a.asset_id} className="glow-border card-hover" style={{ background: '#0c0f1d', borderRadius: 12, overflow: 'hidden' }}>
-                    <div style={{ height: 160, position: 'relative' }}>
-                      <img
-                        src={imageUrl}
-                        alt={a.title || `Cert ${a.asset_id}`}
-                        onError={(e) => { (e.currentTarget as HTMLImageElement).src = DEFAULT_ASSET_IMAGE; }}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.82 }}
-                      />
-                      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(7,9,15,0.82), transparent)' }} />
-                      <div style={{ position: 'absolute', top: 8, right: 8 }}>{renderStatus(a)}</div>
+          ) : auctions.length === 0 ? (
+            <div style={{ gridColumn: '1 / -1', padding: 20 }}>No tienes subastas registradas</div>
+          ) : (
+            auctions.map((a: any) => {
+              const timeLeft = new Date(a.end_time).getTime() - Date.now();
+              const hours = Math.max(0, Math.floor(timeLeft / (1000 * 60 * 60)));
+              const minutes = Math.max(0, Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60)));
+              const seconds = Math.max(0, Math.floor((timeLeft % (1000 * 60)) / 1000));
+              const ended = timeLeft <= 0;
+              const hasBids = Boolean(a.current_bidder_wallet);
+              const imageUrl = resolveAssetImage(a) || DEFAULT_ASSET_IMAGE;
+              return (
+                <div key={a.id || a.asset_id} className="glow-border card-hover" style={{ background: '#0c0f1d', borderRadius: 12, overflow: 'hidden' }}>
+                  <div style={{ height: 160, position: 'relative' }}>
+                    <img
+                      src={imageUrl}
+                      alt={a.title || `Cert ${a.asset_id}`}
+                      onError={(e) => { (e.currentTarget as HTMLImageElement).src = DEFAULT_ASSET_IMAGE; }}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.82 }}
+                    />
+                    <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(7,9,15,0.82), transparent)' }} />
+                    <div style={{ position: 'absolute', top: 8, right: 8 }}>{renderStatus(a)}</div>
+                  </div>
+                  <div style={{ padding: '12px 14px' }}>
+                    <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 16, letterSpacing: '0.03em', marginBottom: 4 }}>{a.title || `Cert ${a.asset_id}`}</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                      <div style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485' }}>{shortId(a.asset_id)}</div>
+                      <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 18, color: '#00c8ff' }}>${Number(a.current_bid || a.starting_price || 0).toFixed(2)}</div>
                     </div>
-                    <div style={{ padding: '12px 14px' }}>
-                      <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 16, letterSpacing: '0.03em', marginBottom: 4 }}>{a.title || `Cert ${a.asset_id}`}</div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                        <div style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485' }}>{shortId(a.asset_id)}</div>
-                        <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 18, color: '#00c8ff' }}>${Number(a.current_bid || a.starting_price || 0).toFixed(2)}</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+                      <div style={{ background: 'rgba(0,200,255,0.06)', border: '1px solid rgba(0,200,255,0.15)', borderRadius: 8, padding: '8px 10px' }}>
+                        <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, color: '#5a6485', textTransform: 'uppercase' }}>Puja</div>
+                        <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 15, color: '#00c8ff' }}>${Number(a.current_bid || a.starting_price || 0).toFixed(2)}</div>
                       </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
-                        <div style={{ background: 'rgba(0,200,255,0.06)', border: '1px solid rgba(0,200,255,0.15)', borderRadius: 8, padding: '8px 10px' }}>
-                          <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, color: '#5a6485', textTransform: 'uppercase' }}>Puja</div>
-                          <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 15, color: '#00c8ff' }}>${Number(a.current_bid || a.starting_price || 0).toFixed(2)}</div>
-                        </div>
-                        <div style={{ background: 'rgba(124,58,237,0.06)', border: '1px solid rgba(124,58,237,0.15)', borderRadius: 8, padding: '8px 10px' }}>
-                          <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, color: '#5a6485', textTransform: 'uppercase' }}>Tiempo</div>
-                          <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 14, color: '#dde3f0' }}>
-                            {ended ? 'Finalizada' : `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`}
-                          </div>
+                      <div style={{ background: 'rgba(124,58,237,0.06)', border: '1px solid rgba(124,58,237,0.15)', borderRadius: 8, padding: '8px 10px' }}>
+                        <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, color: '#5a6485', textTransform: 'uppercase' }}>Estado / Tiempo</div>
+                        <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 13, color: ended ? (hasBids ? '#eab308' : '#a0aec0') : '#dde3f0' }}>
+                          {ended ? (hasBids ? 'Ganada (Esperando Pago)' : 'Devuelta a Wallet') : `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`}
                         </div>
                       </div>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button type="button" className="btn-ghost" style={{ flex: 1, padding: '6px 8px', fontSize: 11 }}>
-                          <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}><Eye size={11} /> VER</span>
-                        </button>
-                        <button type="button" onClick={() => handleDeleteAuction(a.asset_id)} style={{ padding: '6px 10px', background: 'rgba(255,107,107,0.08)', border: '1px solid rgba(255,107,107,0.2)', borderRadius: 6, cursor: 'pointer', color: '#ff6b6b' }}>
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button type="button" className="btn-ghost" style={{ flex: 1, padding: '6px 8px', fontSize: 11 }}>
+                        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}><Eye size={11} /> VER</span>
+                      </button>
+                      <button type="button" onClick={() => handleDeleteAuction(a.asset_id)} style={{ padding: '6px 10px', background: 'rgba(255,107,107,0.08)', border: '1px solid rgba(255,107,107,0.2)', borderRadius: 6, cursor: 'pointer', color: '#ff6b6b' }} title="Cancelar o Eliminar Subasta">
+                        <Trash2 size={12} />
+                      </button>
                     </div>
                   </div>
-                )
-              })}
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
     </div>

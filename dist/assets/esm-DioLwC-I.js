@@ -1,1 +1,0 @@
-import{c as e,s as t}from"./index-ClN-h4If.js";export{t as createUmi,e as defaultPlugins};

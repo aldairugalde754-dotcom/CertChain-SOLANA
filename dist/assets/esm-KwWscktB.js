@@ -1,1 +1,0 @@
-import{a as e,i as t,n,o as r,r as i,t as a}from"./index-ClN-h4If.js";export{t as OperationNotSupportedByWalletAdapterError,e as UninitializedWalletAdapterError,r as WalletAdaptersError,i as createSignerFromWalletAdapter,a as walletAdapterIdentity,n as walletAdapterPayer};
