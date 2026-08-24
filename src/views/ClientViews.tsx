@@ -173,7 +173,7 @@ export function ClientMarketplace() {
     <div style={{ flex: 1, overflow: 'auto' }}>
       <TopBar
         title="Marketplace"
-        subtitle="Productos certificados en blockchain"
+        subtitle="Marketplace de certificados"
         actions={
           <button
             aria-label="Abrir carrito"
@@ -760,7 +760,7 @@ export function ClientAuctions() {
 
   return (
     <div style={{ flex: 1, overflow: 'auto' }}>
-      <TopBar title="Subastas en Vivo" subtitle="Participa en subastas de productos certificados en tiempo real" />
+      <TopBar title="Subastas en Vivo" subtitle="Participa en subastas en tiempo real" />
       <div style={{ padding: '24px 28px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -772,7 +772,6 @@ export function ClientAuctions() {
           <span style={{ color: 'rgba(255,255,255,0.15)' }}>•</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: '#00c8ff', background: 'rgba(0,200,255,0.08)', padding: '2px 8px', borderRadius: 4, border: '1px solid rgba(0,200,255,0.2)' }}>
-              ⚡ TIEMPO REAL ACTIVO (1.5s)
             </span>
           </div>
           {wonPendingCount > 0 && (
@@ -1437,7 +1436,7 @@ export function ClientWallet() {
         </div>
 
         {/* SECTION HEADER */}
-        <SectionTitle sub="Todos tus certificados de propiedad digitales en la red Solana">
+        <SectionTitle sub="Coleccion de Certificados cNFT">
           Mis Certificados cNFT
         </SectionTitle>
 
@@ -1960,7 +1959,7 @@ export function ClientTransfer() {
 
   return (
     <div style={{ flex: 1, overflow: 'auto', paddingBottom: 40 }}>
-      <TopBar title="Transferir / Vender" subtitle="Gestiona tus certificados de propiedad y tus publicaciones en el marketplace" />
+      <TopBar title="Transferir / Vender" subtitle="Transfiere o vende tus certificados" />
       
       <div style={{ padding: '28px 32px' }}>
         {/* Selector de Modo */}
@@ -2014,7 +2013,7 @@ export function ClientTransfer() {
 
                 {!publicKey ? (
                   <div style={{ padding: '24px 12px', border: '1px dashed rgba(0,200,255,0.2)', borderRadius: 12, textAlign: 'center', background: 'rgba(0,200,255,0.03)', color: '#8a93b8', fontFamily: 'JetBrains Mono', fontSize: 12 }}>
-                    Conecta tu wallet para consultar tu inventario y operar con tus cNFTs.
+                    Conecta tu wallet para consultar tus certificados.
                   </div>
                 ) : loading ? (
                   <div style={{ padding: '24px', color: '#8a93b8', fontFamily: 'JetBrains Mono', fontSize: 12 }}>Cargando certificados...</div>
@@ -2192,7 +2191,7 @@ export function ClientTransfer() {
               </div>
             ) : (
               <div style={{ border: '1px dashed rgba(255,255,255,0.1)', borderRadius: 14, padding: 20, textAlign: 'center', color: '#5a6485', fontFamily: 'JetBrains Mono', fontSize: 12 }}>
-                Selecciona un cNFT para ver su resumen.
+                Selecciona un cNFT
               </div>
             )}
           </div>

@@ -267,7 +267,7 @@ export default function TraceabilityView({ assetId: assetIdProp }: { assetId?: s
               <input
                 value={searchId}
                 onChange={(e) => setSearchId(e.target.value)}
-                placeholder="Pega el Asset ID o Hash"
+                placeholder="Ingresa el ID del certificado"
                 style={{
                   width: '100%', border: '1px solid rgba(0,200,255,0.18)', background: '#0b1220', borderRadius: 10,
                   padding: '12px 14px', color: '#eaf3ff', fontFamily: 'JetBrains Mono', fontSize: 13, outline: 'none'
