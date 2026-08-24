@@ -1386,6 +1386,7 @@ export function ClientWallet() {
               const inMarketplace = marketplaceListings.some((l: any) => String(l.asset_id || l.assetId || l.id || '') === assetId)
               const inAuction = auctionListings.some((a: any) => String(a.asset_id || a.assetId || a.id || '') === assetId)
 
+              const historyUrl = `${window.location.origin}/traceability/${encodeURIComponent(assetId)}`
               const traceUrl = `${window.location.origin}/verify/${encodeURIComponent(assetId)}`
 
               return (
@@ -1471,7 +1472,7 @@ export function ClientWallet() {
                     <div style={{ marginTop: 'auto', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                       <button
                         type="button"
-                        onClick={() => window.open(traceUrl, '_blank')}
+                        onClick={() => window.open(historyUrl, '_blank')}
                         style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -1570,7 +1571,7 @@ export function ClientWallet() {
                 fontWeight: 600
               }}
             >
-              <ExternalLink size={14} /> Abrir trazabilidad pública
+              <ExternalLink size={14} /> Abrir verificación pública
             </a>
           </div>
         </div>
