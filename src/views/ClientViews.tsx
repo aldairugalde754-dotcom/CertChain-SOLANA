@@ -327,6 +327,7 @@ export function ClientMarketplace() {
 
 function ProductCard({ product, inCart, onAddCart }: { product: any; inCart: boolean; onAddCart: () => void }) {
   const [liked, setLiked] = useState(false)
+  const [qrVisible, setQrVisible] = useState<{ visible: boolean; url: string; title: string }>({ visible: false, url: '', title: '' })
 
   return (
     <div className="card-hover glow-border" style={{
