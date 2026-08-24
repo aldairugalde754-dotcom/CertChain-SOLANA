@@ -1439,16 +1439,25 @@ export function ClientWallet() {
                     </div>
 
                     {/* METRADOS ADQUIRIDO / VALOR */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-                      <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px', border: '1px solid rgba(255,255,255,0.04)' }}>
-                        <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, color: '#6c7a9c', marginBottom: 2, letterSpacing: '0.05em' }}>ADQUIRIDO</div>
-                        <div style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: '#dde3f0', fontWeight: 600 }}>{acquired}</div>
+                    {acquired && acquired !== 'N/D' ? (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                        <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px', border: '1px solid rgba(255,255,255,0.04)' }}>
+                          <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, color: '#6c7a9c', marginBottom: 2, letterSpacing: '0.05em' }}>ADQUIRIDO</div>
+                          <div style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: '#dde3f0', fontWeight: 600 }}>{acquired}</div>
+                        </div>
+                        <div style={{ background: 'rgba(124,58,237,0.08)', borderRadius: 10, padding: '10px', border: '1px solid rgba(124,58,237,0.2)' }}>
+                          <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, color: '#a78bfa', marginBottom: 2, letterSpacing: '0.05em' }}>VALOR ESTIMADO</div>
+                          <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 16, color: '#a78bfa' }}>{formatCurrency(value)}</div>
+                        </div>
                       </div>
-                      <div style={{ background: 'rgba(124,58,237,0.08)', borderRadius: 10, padding: '10px', border: '1px solid rgba(124,58,237,0.2)' }}>
-                        <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, color: '#a78bfa', marginBottom: 2, letterSpacing: '0.05em' }}>VALOR ESTIMADO</div>
-                        <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 16, color: '#a78bfa' }}>{formatCurrency(value)}</div>
+                    ) : (
+                      <div style={{ marginBottom: 16 }}>
+                        <div style={{ background: 'rgba(124,58,237,0.08)', borderRadius: 10, padding: '14px', border: '1px solid rgba(124,58,237,0.2)' }}>
+                          <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, color: '#a78bfa', marginBottom: 6, letterSpacing: '0.05em' }}>VALOR ESTIMADO</div>
+                          <div style={{ fontFamily: 'Rajdhani', fontWeight: 700, fontSize: 18, color: '#a78bfa' }}>{formatCurrency(value)}</div>
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     {/* HASH COMPONENT CLEANUP */}
                     <div style={{ marginBottom: 18, background: 'rgba(0,0,0,0.2)', padding: '8px 10px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
