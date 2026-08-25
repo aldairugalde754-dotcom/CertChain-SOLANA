@@ -108,17 +108,16 @@ export function CompanyCertify({ user }: { user?: any } = {}) {
   const [nombre, setNombre] = useState('')
   const [categoria, setCategoria] = useState('')
   const [serie, setSerie] = useState('')
-  const [anio, setAnio] = useState(new Date().getFullYear().toString())
-  const [origen, setOrigen] = useState('México')
+  const [anio, setAnio] = useState('')
+  const [origen, setOrigen] = useState('')
   const [descripcion, setDescripcion] = useState('')
   const [valor, setValor] = useState('')
   const [edicion, setEdicion] = useState('')
-  const [walletPropietario, setWalletPropietario] = useState('')
 
-  const [material, setMaterial] = useState('Acero inoxidable 316L')
-  const [acabado, setAcabado] = useState('Pulido y satinado')
-  const [garantia, setGarantia] = useState('5 años')
-  const [peso, setPeso] = useState('180g')
+  const [material, setMaterial] = useState('')
+  const [acabado, setAcabado] = useState('')
+  const [garantia, setGarantia] = useState('')
+  const [peso, setPeso] = useState('')
 
   const [images, setImages] = useState<string[]>([])
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -206,19 +205,8 @@ export function CompanyCertify({ user }: { user?: any } = {}) {
       return
     }
 
-    // 2. Validar wallet destino / propietario
-    const trimmedWalletPropietario = walletPropietario ? walletPropietario.trim() : '';
-    if (!trimmedWalletPropietario) {
-      setUiError("Por favor, ingresa la dirección de wallet del propietario inicial.");
-      return;
-    }
-
-    try {
-      new PublicKey(trimmedWalletPropietario);
-    } catch {
-      setUiError("La dirección de la wallet del propietario no es una clave pública válida de Solana.");
-      return;
-    }
+    // El certificado emitido se asigna y transfiere inicialmente a la misma wallet que lo emite
+    const trimmedWalletPropietario = walletEmisorStr || umi.identity.publicKey.toString();
 
     try {
       setLoading(true);
@@ -422,25 +410,6 @@ export function CompanyCertify({ user }: { user?: any } = {}) {
       <TopBar title="Certificar Producto" subtitle="Emitir certificado inmutable (cNFT) en la blockchain de Solana" />
       <div style={{ padding: '28px 32px' }}>
         
-        {/* Banner de Estado de Merkle Tree */}
-        <div style={{ background: '#0c0f1d', border: '1px solid rgba(0, 200, 255, 0.2)', borderRadius: 12, padding: '16px 20px', marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ fontFamily: 'Rajdhani', fontSize: 14, fontWeight: 700, color: '#00c8ff', letterSpacing: '0.05em' }}>ESTADO DEL MERKLE TREE</div>
-            <div style={{ fontFamily: 'JetBrains Mono', fontSize: 11, color: '#5a6485', marginTop: 4 }}>
-              Árbol Activo: <code style={{ color: '#dde3f0' }}>{merkleTreeAddr}</code>
-            </div>
-          </div>
-          <button 
-            type="button"
-            className="btn-ghost"
-            onClick={handleCrearArbol}
-            disabled={loadingTree}
-            style={{ fontSize: 12, padding: '6px 12px' }}
-          >
-            {loadingTree ? "Inicializando..." : "Crear Nuevo Merkle Tree"}
-          </button>
-        </div>
-
         {(uiError || mintError) && (
           <div style={{ marginBottom: 20, padding: '16px 18px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(239,68,68,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -490,7 +459,7 @@ export function CompanyCertify({ user }: { user?: any } = {}) {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                   <div>
                     <label style={{ display: 'block', fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485', textTransform: 'uppercase', marginBottom: 6 }}>Nombre del Producto *</label>
-                    <input className="input-base" placeholder="Anillo de Plata Matrimonio" value={nombre} onChange={e => setNombre(e.target.value)} required />
+                    <input className="input-base" placeholder="Ej. Anillo de Plata Matrimonio" value={nombre} onChange={e => setNombre(e.target.value)} required />
                   </div>
                   <div>
                     <label style={{ display: 'block', fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485', textTransform: 'uppercase', marginBottom: 6 }}>Categoría *</label>
@@ -504,15 +473,15 @@ export function CompanyCertify({ user }: { user?: any } = {}) {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
                   <div>
                     <label style={{ display: 'block', fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485', textTransform: 'uppercase', marginBottom: 6 }}>No. de Serie *</label>
-                    <input className="input-base" placeholder="PLT-Rj400" value={serie} onChange={e => setSerie(e.target.value)} required style={{ fontFamily: 'JetBrains Mono', fontSize: 12 }} />
+                    <input className="input-base" placeholder="Ej. PLT-RJ400" value={serie} onChange={e => setSerie(e.target.value)} required style={{ fontFamily: 'JetBrains Mono', fontSize: 12 }} />
                   </div>
                   <div>
                     <label style={{ display: 'block', fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485', textTransform: 'uppercase', marginBottom: 6 }}>Año de Fabricación</label>
-                    <input className="input-base" type="number" value={anio} onChange={e => setAnio(e.target.value)} placeholder="2026" />
+                    <input className="input-base" type="number" value={anio} onChange={e => setAnio(e.target.value)} placeholder="Ej. 2026" />
                   </div>
                   <div>
                     <label style={{ display: 'block', fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485', textTransform: 'uppercase', marginBottom: 6 }}>País de Origen</label>
-                    <input className="input-base" value={origen} onChange={e => setOrigen(e.target.value)} placeholder="México" />
+                    <input className="input-base" value={origen} onChange={e => setOrigen(e.target.value)} placeholder="Ej. México" />
                   </div>
                 </div>
 
@@ -524,11 +493,11 @@ export function CompanyCertify({ user }: { user?: any } = {}) {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                   <div>
                     <label style={{ display: 'block', fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485', textTransform: 'uppercase', marginBottom: 6 }}>Valor de Mercado (USD)</label>
-                    <input className="input-base" type="number" value={valor} onChange={e => setValor(e.target.value)} placeholder="2500" />
+                    <input className="input-base" type="number" value={valor} onChange={e => setValor(e.target.value)} placeholder="Ej. 2500" />
                   </div>
                   <div>
                     <label style={{ display: 'block', fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485', textTransform: 'uppercase', marginBottom: 6 }}>Edición / Tiraje</label>
-                    <input className="input-base" value={edicion} onChange={e => setEdicion(e.target.value)} placeholder="Pieza Única" />
+                    <input className="input-base" value={edicion} onChange={e => setEdicion(e.target.value)} placeholder="Ej. Pieza Única" />
                   </div>
                 </div>
 
@@ -537,26 +506,21 @@ export function CompanyCertify({ user }: { user?: any } = {}) {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                     <div>
                       <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, color: '#5a6485', marginBottom: 4 }}>Material principal</div>
-                      <input className="input-base" value={material} onChange={e => setMaterial(e.target.value)} style={{ fontSize: 12 }} />
+                      <input className="input-base" value={material} onChange={e => setMaterial(e.target.value)} placeholder="Ej. Acero inoxidable 316L" style={{ fontSize: 12 }} />
                     </div>
                     <div>
                       <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, color: '#5a6485', marginBottom: 4 }}>Acabado</div>
-                      <input className="input-base" value={acabado} onChange={e => setAcabado(e.target.value)} style={{ fontSize: 12 }} />
+                      <input className="input-base" value={acabado} onChange={e => setAcabado(e.target.value)} placeholder="Ej. Pulido y satinado" style={{ fontSize: 12 }} />
                     </div>
                     <div>
                       <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, color: '#5a6485', marginBottom: 4 }}>Garantía</div>
-                      <input className="input-base" value={garantia} onChange={e => setGarantia(e.target.value)} style={{ fontSize: 12 }} />
+                      <input className="input-base" value={garantia} onChange={e => setGarantia(e.target.value)} placeholder="Ej. 5 años" style={{ fontSize: 12 }} />
                     </div>
                     <div>
                       <div style={{ fontFamily: 'JetBrains Mono', fontSize: 9, color: '#5a6485', marginBottom: 4 }}>Peso</div>
-                      <input className="input-base" value={peso} onChange={e => setPeso(e.target.value)} style={{ fontSize: 12 }} />
+                      <input className="input-base" value={peso} onChange={e => setPeso(e.target.value)} placeholder="Ej. 180g" style={{ fontSize: 12 }} />
                     </div>
                   </div>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485', textTransform: 'uppercase', marginBottom: 6 }}>Wallet del Propietario Inicial (Solana PubKey) *</label>
-                  <input className="input-base" value={walletPropietario} onChange={e => setWalletPropietario(e.target.value)} placeholder="Ej. Hx2BvP9J5zXNTRKx..." style={{ fontFamily: 'JetBrains Mono', fontSize: 12 }} required />
                 </div>
               </div>
             </div>
@@ -593,20 +557,8 @@ export function CompanyCertify({ user }: { user?: any } = {}) {
                   <Upload size={20} color="#7c3aed" />
                 </div>
                 <div style={{ fontFamily: 'Rajdhani', fontSize: 15, fontWeight: 700, color: '#dde3f0', marginBottom: 4 }}>ARRASTRA O SELECCIONA</div>
-                <div style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485' }}>PNG, JPG, WEBP · Máx. 10MB</div>
-                <input ref={fileRef} name="image" type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={handleFileInput} />
-                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                  <input
-                    value={imageUrlInput}
-                    onChange={e => setImageUrlInput(e.target.value)}
-                    onClick={e => e.stopPropagation()}
-                    placeholder="Pega URL pública de imagen (https://...)"
-                    style={{ flex: 1 }}
-                  />
-                  <button type="button" className="btn-ghost" onClick={(e) => { e.stopPropagation(); handleUseImageUrl(); }} style={{ padding: '6px 10px' }}>
-                    Usar URL
-                  </button>
-                </div>
+                <div style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: '#5a6485' }}>PNG, JPG, JPEG, WEBP, GIF, SVG · Máx. 10MB</div>
+                <input ref={fileRef} name="image" type="file" accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,image/svg+xml,image/*" multiple style={{ display: 'none' }} onChange={handleFileInput} />
               </div>
 
               {images.length > 0 ? (

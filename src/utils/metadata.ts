@@ -36,6 +36,25 @@ export interface MetaplexMetadataJson {
   };
 }
 
+export function getImageMimeType(urlOrDataUri: string): string {
+  if (!urlOrDataUri) return 'image/png';
+  if (urlOrDataUri.startsWith('data:image/')) {
+    const match = urlOrDataUri.match(/^data:(image\/[a-zA-Z0-9\+\-]+);/);
+    if (match) return match[1];
+  }
+  const match = urlOrDataUri.match(/\.(png|jpg|jpeg|webp|gif|svg|bmp|avif)(\?|$)/i);
+  if (match) {
+    const ext = match[1].toLowerCase();
+    if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+    if (ext === 'webp') return 'image/webp';
+    if (ext === 'gif') return 'image/gif';
+    if (ext === 'svg') return 'image/svg+xml';
+    if (ext === 'bmp') return 'image/bmp';
+    if (ext === 'avif') return 'image/avif';
+  }
+  return 'image/png';
+}
+
 /**
  * Construye el objeto JSON conforme al estándar Metaplex Token Metadata V1 para CertChain y Pinata.
  */
@@ -61,7 +80,7 @@ export function buildCertificateMetadata(inputs: CertificateFormInputs): Metaple
       { trait_type: 'Peso', value: inputs.peso || '180g' },
     ],
     properties: {
-      files: [{ uri: primaryImage, type: 'image/png' }],
+      files: [{ uri: primaryImage, type: getImageMimeType(primaryImage) }],
       category: 'image',
       creators: [
         {

@@ -1,0 +1,1 @@
+import{c as e,s as t}from"./index-S5209-0Z.js";export{t as createUmi,e as defaultPlugins};

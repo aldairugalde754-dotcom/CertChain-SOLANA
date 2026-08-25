@@ -25,6 +25,54 @@ export function isPinataConfigured() {
 }
 
 /**
+ * Detecta el tipo MIME y la extensión adecuada basándose en el nombre de archivo o en los magic bytes del Buffer
+ */
+export function getMimeTypeAndExt(fileNameOrPath, fileBuffer = null) {
+  let ext = '';
+  if (fileNameOrPath && typeof fileNameOrPath === 'string') {
+    const match = fileNameOrPath.match(/\.([a-zA-Z0-9]+)(\?|$)/);
+    if (match) ext = match[1].toLowerCase();
+  }
+
+  if (fileBuffer && Buffer.isBuffer(fileBuffer) && fileBuffer.length >= 4) {
+    if (fileBuffer[0] === 0xFF && fileBuffer[1] === 0xD8 && fileBuffer[2] === 0xFF) {
+      return { mimeType: 'image/jpeg', ext: 'jpg' };
+    }
+    if (fileBuffer[0] === 0x89 && fileBuffer[1] === 0x50 && fileBuffer[2] === 0x4E && fileBuffer[3] === 0x47) {
+      return { mimeType: 'image/png', ext: 'png' };
+    }
+    if (fileBuffer.length >= 6 && (fileBuffer.toString('ascii', 0, 6) === 'GIF87a' || fileBuffer.toString('ascii', 0, 6) === 'GIF89a')) {
+      return { mimeType: 'image/gif', ext: 'gif' };
+    }
+    if (fileBuffer.length >= 12 && fileBuffer.toString('ascii', 0, 4) === 'RIFF' && fileBuffer.toString('ascii', 8, 12) === 'WEBP') {
+      return { mimeType: 'image/webp', ext: 'webp' };
+    }
+    if (fileBuffer.length >= 4 && fileBuffer.toString('utf8', 0, 100).includes('<svg')) {
+      return { mimeType: 'image/svg+xml', ext: 'svg' };
+    }
+  }
+
+  switch (ext) {
+    case 'jpg':
+    case 'jpeg':
+      return { mimeType: 'image/jpeg', ext: 'jpg' };
+    case 'webp':
+      return { mimeType: 'image/webp', ext: 'webp' };
+    case 'gif':
+      return { mimeType: 'image/gif', ext: 'gif' };
+    case 'svg':
+      return { mimeType: 'image/svg+xml', ext: 'svg' };
+    case 'bmp':
+      return { mimeType: 'image/bmp', ext: 'bmp' };
+    case 'avif':
+      return { mimeType: 'image/avif', ext: 'avif' };
+    case 'png':
+    default:
+      return { mimeType: 'image/png', ext: ext || 'png' };
+  }
+}
+
+/**
  * Subir imagen física alojada en /uploads o Buffer a Pinata IPFS
  */
 export async function uploadImageToIPFS(filePath, fileName) {
@@ -33,7 +81,19 @@ export async function uploadImageToIPFS(filePath, fileName) {
     return null;
   }
 
-  const name = fileName || `image-${Date.now()}.png`;
+  let fileBuffer;
+  if (typeof filePath === 'string' && fs.existsSync(filePath)) {
+    try {
+      fileBuffer = await fs.promises.readFile(filePath);
+    } catch (e) {
+      // ignore
+    }
+  } else if (Buffer.isBuffer(filePath)) {
+    fileBuffer = filePath;
+  }
+
+  const { mimeType, ext } = getMimeTypeAndExt(fileName || (typeof filePath === 'string' ? filePath : ''), fileBuffer);
+  const name = fileName || `image-${Date.now()}.${ext}`;
 
   // Intento 1: Usando SDK de Pinata
   const pinata = getPinataClient();
@@ -55,17 +115,12 @@ export async function uploadImageToIPFS(filePath, fileName) {
     const apiKey = process.env.PINATA_API_KEY;
     const secretKey = process.env.PINATA_SECRET_API_KEY;
 
-    let fileBuffer;
-    if (typeof filePath === 'string' && fs.existsSync(filePath)) {
-      fileBuffer = await fs.promises.readFile(filePath);
-    } else if (Buffer.isBuffer(filePath)) {
-      fileBuffer = filePath;
-    } else {
+    if (!fileBuffer) {
       throw new Error('Archivo de imagen no válido para subir a Pinata');
     }
 
     const formData = new FormData();
-    const blob = new Blob([fileBuffer], { type: 'image/png' });
+    const blob = new Blob([fileBuffer], { type: mimeType });
     formData.append('file', blob, name);
     formData.append('pinataMetadata', JSON.stringify({ name }));
 

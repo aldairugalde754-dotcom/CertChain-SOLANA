@@ -9,7 +9,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { uploadImageToIPFS, uploadMetadataToIPFS } from './pinataService.js';
+import { uploadImageToIPFS, uploadMetadataToIPFS, getMimeTypeAndExt } from './pinataService.js';
 import { createUmi } from '@metaplex-foundation/umi-bundle-defaults';
 import { dasApi } from '@metaplex-foundation/digital-asset-standard-api';
 import { mplBubblegum, transfer as bubblegumTransfer, getAssetWithProof } from '@metaplex-foundation/mpl-bubblegum';
@@ -237,19 +237,19 @@ async function ensureLocalImage(imageUrl, host) {
       });
       if (response.ok) {
         const contentType = response.headers.get('content-type') || '';
-        let ext = '.png';
-        if (contentType.includes('image/jpeg')) ext = '.jpg';
-        else if (contentType.includes('image/webp')) ext = '.webp';
-        else if (contentType.includes('image/gif')) ext = '.gif';
-        else if (contentType.includes('image/svg')) ext = '.svg';
-        else {
-          const match = cleanUrl.match(/\.(png|jpg|jpeg|webp|gif|svg)(\?|$)/i);
-          if (match) ext = '.' + match[1].toLowerCase();
+        const buffer = Buffer.from(await response.arrayBuffer());
+        const { ext: detectedExt } = getMimeTypeAndExt(cleanUrl, buffer);
+        let ext = `.${detectedExt}`;
+        if (!ext || ext === '.') {
+          if (contentType.includes('image/jpeg')) ext = '.jpg';
+          else if (contentType.includes('image/webp')) ext = '.webp';
+          else if (contentType.includes('image/gif')) ext = '.gif';
+          else if (contentType.includes('image/svg')) ext = '.svg';
+          else ext = '.png';
         }
 
         const filename = `downloaded-${Date.now()}-${Math.floor(Math.random() * 10000)}${ext}`;
         const filePath = path.join(uploadsDir, filename);
-        const buffer = Buffer.from(await response.arrayBuffer());
         await fs.promises.writeFile(filePath, buffer);
         console.log('Imagen descargada exitosamente en:', filename);
         return `${host}/uploads/${filename}`;
@@ -661,10 +661,16 @@ app.post('/api/certificates/prepare', upload.single('image'), async (req, res) =
       localImagePath = path.join(uploadsDir, 'default.png');
     }
 
+    let fileBuffer = null;
+    if (localImagePath && fs.existsSync(localImagePath)) {
+      try { fileBuffer = await fs.promises.readFile(localImagePath); } catch (e) {}
+    }
+    const { mimeType: fileMimeType, ext: fileExt } = getMimeTypeAndExt(req.file ? req.file.originalname : (imageUrl || ''), fileBuffer);
+
     // Intentar subida de imagen a Pinata IPFS
     let ipfsImageUrl = null;
     if (localImagePath && fs.existsSync(localImagePath)) {
-      const originalName = req.file ? req.file.originalname : `cert-image-${Date.now()}.png`;
+      const originalName = req.file ? req.file.originalname : `cert-image-${Date.now()}.${fileExt}`;
       ipfsImageUrl = await uploadImageToIPFS(localImagePath, originalName);
     }
 
@@ -736,7 +742,7 @@ app.post('/api/certificates/prepare', upload.single('image'), async (req, res) =
       attributes: attributesList,
       properties: {
         files: [
-          { uri: finalImageUrl, type: "image/png" }
+          { uri: finalImageUrl, type: fileMimeType }
         ],
         category: "image"
       }
@@ -815,30 +821,24 @@ app.get('/api/certificates/metadata/:id', async (req, res) => {
       imageUri = imageUri.replace(/^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+)(:\d+)?/i, reqHost);
     }
 
-    let fileType = 'image/png';
-    try {
-      const ext = path.extname(new URL(imageUri).pathname).toLowerCase();
-      if (ext === '.jpg' || ext === '.jpeg') fileType = 'image/jpeg';
-      else if (ext === '.gif') fileType = 'image/gif';
-      else if (ext === '.webp') fileType = 'image/webp';
-      else if (ext === '.svg') fileType = 'image/svg+xml';
-    } catch (e) {
-      // fallback
-    }
-
-    // Convertir la imagen local en Data URI base64 para que las extensiones de cartera (Solflare) la muestren directo sin depender de proxies CDN de IP privada
+    let localBuf = null;
     let finalImage = imageUri;
     try {
       if (imageUri.includes('/uploads/')) {
         const filename = path.basename(new URL(imageUri, reqHost).pathname);
         const filePath = path.join(uploadsDir, filename);
         if (fs.existsSync(filePath)) {
-          const fileBuf = await fs.promises.readFile(filePath);
-          finalImage = `data:${fileType};base64,${fileBuf.toString('base64')}`;
+          localBuf = await fs.promises.readFile(filePath);
         }
       }
     } catch (e) {
       console.warn('Fallback a URL HTTP en imagen:', e.message);
+    }
+
+    const { mimeType: fileType } = getMimeTypeAndExt(imageUri, localBuf);
+
+    if (localBuf) {
+      finalImage = `data:${fileType};base64,${localBuf.toString('base64')}`;
     }
 
     console.log('Serving metadata imageUri:', imageUri);
