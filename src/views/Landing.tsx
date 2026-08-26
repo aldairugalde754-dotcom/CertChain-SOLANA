@@ -1132,7 +1132,7 @@ const handleSubmit = async (e: React.FormEvent) => {
           </span>
           {/* TODO: reemplaza estos href "#" por tus perfiles reales */}
           <a
-            href="#"
+            href="https://www.instagram.com/certchainofficial/"
             target="_blank"
             rel="noopener noreferrer"
             aria-label="Instagram de CertChain"
