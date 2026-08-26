@@ -853,7 +853,7 @@ const handleSubmit = async (e: React.FormEvent) => {
               borderRadius: '20px',
               overflow: 'hidden',
               aspectRatio: '4 / 5',
-              backgroundImage: '/public/images/ImagenDiamante.png',
+              backgroundImage: '/images/ImagenDiamante.png',
               backgroundSize: 'cover',
               backgroundPosition: 'center',
               backgroundColor: '#0d0620',
