@@ -853,7 +853,7 @@ const handleSubmit = async (e: React.FormEvent) => {
               borderRadius: '20px',
               overflow: 'hidden',
               aspectRatio: '4 / 5',
-              backgroundImage: '/images/ImagenDiamante.png',
+              backgroundImage: 'url(/images/ImagenDiamante.png)',
               backgroundSize: 'cover',
               backgroundPosition: 'center',
               backgroundColor: '#0d0620',
@@ -946,7 +946,7 @@ const handleSubmit = async (e: React.FormEvent) => {
             overflow: 'hidden',
             border: '1px solid rgba(153, 69, 255, 0.25)',
             aspectRatio: '21 / 8',
-            backgroundImage: 'url(/images/feature-marketplace.jpg)',
+            backgroundImage: 'url(/images/banner.png)',
             backgroundSize: 'cover',
             backgroundPosition: 'center',
             backgroundColor: '#0d0620',
@@ -993,28 +993,28 @@ const handleSubmit = async (e: React.FormEvent) => {
           }}>
             {[
               {
-                image: '/public/images/arte.png',
+                image: '/images/art.png',
                 icon: <Palette size={20} color="#14F195" />,
                 bg: 'rgba(20, 241, 149, 0.1)',
                 title: 'Artistas Independientes',
                 text: 'Firma cada pieza con tu identidad on-chain. Protege tu obra de copias y demuestra su origen para siempre.'
               },
               {
-                image: '/public/images/joyas.png',
+                image: '/images/joyas.png',
                 icon: <Gem size={20} color="#c9a3ff" />,
                 bg: 'rgba(153, 69, 255, 0.12)',
                 title: 'Joyerías y Marcas',
                 text: 'Emite certificados digitales por lote, elimina la falsificación y da a tus clientes prueba verificable de valor.'
               },
               {
-                image: '/public/images/coleccion.png',
+                image: '/images/coleccion.png',
                 icon: <Layers size={20} color="#14F195" />,
                 bg: 'rgba(20, 241, 149, 0.1)',
                 title: 'Coleccionistas',
                 text: 'Compra y transfiere piezas con procedencia clara. Cada certificado viaja contigo, directo a tu wallet.'
               },
               {
-                image: '/public/images/empresas.png',
+                image: '/images/empresas.png',
                 icon: <Rocket size={20} color="#c9a3ff" />,
                 bg: 'rgba(153, 69, 255, 0.12)',
                 title: 'Emprendedores',
