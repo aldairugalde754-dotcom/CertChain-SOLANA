@@ -19,9 +19,17 @@ import {
   Layers,
   Palette,
   Rocket,
-  Gem
+  Gem,
+  HelpCircle,
+  ExternalLink,
+  Check,
+  Download,
+  KeyRound,
+  Copy
 } from 'lucide-react';
 import { connectPhantomWallet, connectSolflareWallet, connectAnySolanaWallet } from '../utils/solanaWallet';
+import { Camera } from 'lucide-react';
+
 
 type Role = 'client' | 'company';
 type AuthMode = 'login' | 'register';
@@ -42,11 +50,14 @@ export default function Landing({ onEnter }: LandingProps) {
   const [companyName, setCompanyName] = useState('');
   const [walletAddress, setWalletAddress] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showWalletHelp, setShowWalletHelp] = useState(false);
+  const [formError, setFormError] = useState('');
 
   const handleOpenAuth = (role: Role, mode: AuthMode = 'register') => {
     setSelectedRole(role);
     setAuthMode(mode);
     setIsModalOpen(true);
+    setFormError('');
   };
 
   const handleConnectPhantom = async () => {
@@ -75,6 +86,7 @@ const handleSubmit = async (e: React.FormEvent) => {
   if (!selectedRole) return;
 
   setLoading(true);
+  setFormError('');
 
   // Recuperar wallet desde el DOM o estado
   const walletInput = document.getElementById('solana-wallet-input') as HTMLInputElement | null;
@@ -121,11 +133,11 @@ const handleSubmit = async (e: React.FormEvent) => {
       setIsModalOpen(false);
       onEnter(activeRole, data.user);
     } else {
-      alert(data.error || 'Error en la petición');
+      setFormError(data.error || 'Error en la petición. Revisa tus datos e intenta de nuevo.');
     }
   } catch (error) {
     console.error(error);
-    alert(`Error al conectar con el servidor backend en ${API_BASE_URL}`);
+    setFormError(`No pudimos conectar con el servidor (${API_BASE_URL}). Verifica tu conexión e intenta de nuevo.`);
   } finally {
     setLoading(false);
   }
@@ -981,28 +993,28 @@ const handleSubmit = async (e: React.FormEvent) => {
           }}>
             {[
               {
-                image: '/images/audience-artist.jpg',
+                image: '/public/images/arte.png',
                 icon: <Palette size={20} color="#14F195" />,
                 bg: 'rgba(20, 241, 149, 0.1)',
                 title: 'Artistas Independientes',
                 text: 'Firma cada pieza con tu identidad on-chain. Protege tu obra de copias y demuestra su origen para siempre.'
               },
               {
-                image: '/images/audience-jewelry.jpg',
+                image: '/public/images/joyas.png',
                 icon: <Gem size={20} color="#c9a3ff" />,
                 bg: 'rgba(153, 69, 255, 0.12)',
                 title: 'Joyerías y Marcas',
                 text: 'Emite certificados digitales por lote, elimina la falsificación y da a tus clientes prueba verificable de valor.'
               },
               {
-                image: '/images/audience-collector.jpg',
+                image: '/public/images/coleccion.png',
                 icon: <Layers size={20} color="#14F195" />,
                 bg: 'rgba(20, 241, 149, 0.1)',
                 title: 'Coleccionistas',
                 text: 'Compra y transfiere piezas con procedencia clara. Cada certificado viaja contigo, directo a tu wallet.'
               },
               {
-                image: '/images/audience-entrepreneur.jpg',
+                image: '/public/images/empresas.png',
                 icon: <Rocket size={20} color="#c9a3ff" />,
                 bg: 'rgba(153, 69, 255, 0.12)',
                 title: 'Emprendedores',
@@ -1084,6 +1096,95 @@ const handleSubmit = async (e: React.FormEvent) => {
           </button>
         </div>
       </main>
+
+      {/* FOOTER: REDES SOCIALES */}
+      <footer style={{
+        maxWidth: '1280px',
+        margin: '0 auto',
+        padding: '28px 48px 40px',
+        borderTop: '1px solid rgba(153, 69, 255, 0.12)',
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '16px',
+        position: 'relative'
+      }}>
+        <span style={{
+          fontFamily: "'JetBrains Mono', monospace",
+          fontSize: '11px',
+          letterSpacing: '0.08em',
+          color: '#716c86',
+        }}>
+          © {new Date().getFullYear()} CertChain · Certificación on-chain en Solana
+        </span>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: '11px',
+            letterSpacing: '0.08em',
+            color: '#8b88a3',
+            textTransform: 'uppercase',
+            marginRight: '4px'
+          }}>
+            Síguenos
+          </span>
+          {/* TODO: reemplaza estos href "#" por tus perfiles reales */}
+          <a
+            href="#"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Instagram de CertChain"
+            title="Instagram"
+            style={{
+              width: '38px',
+              height: '38px',
+              borderRadius: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'rgba(153, 69, 255, 0.08)',
+              border: '1px solid rgba(153, 69, 255, 0.25)',
+              color: '#c9a3ff',
+              textDecoration: 'none',
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(153, 69, 255, 0.18)'; e.currentTarget.style.borderColor = '#9945FF'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(153, 69, 255, 0.08)'; e.currentTarget.style.borderColor = 'rgba(153, 69, 255, 0.25)'; }}
+          >
+            <Camera size={17} />
+          </a>
+          <a
+            href="https://x.com/CertChain_PJ"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="X CertChain"
+            title="X (Twitter)"
+            style={{
+              width: '38px',
+              height: '38px',
+              borderRadius: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'rgba(20, 241, 149, 0.06)',
+              border: '1px solid rgba(20, 241, 149, 0.25)',
+              color: '#8ff5c6',
+              textDecoration: 'none',
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(20, 241, 149, 0.16)'; e.currentTarget.style.borderColor = '#14F195'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(20, 241, 149, 0.06)'; e.currentTarget.style.borderColor = 'rgba(20, 241, 149, 0.25)'; }}
+          >
+            {/* Ícono de X dibujado a mano (lucide no incluye el logo oficial) */}
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+            </svg>
+          </a>
+        </div>
+      </footer>
+
       {/* MODAL DE REGISTRO / LOGIN */}
       {isModalOpen && selectedRole && (
         <div style={{
@@ -1108,7 +1209,9 @@ const handleSubmit = async (e: React.FormEvent) => {
             maxWidth: '460px',
             padding: '36px',
             position: 'relative',
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)'
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)',
+            maxHeight: '88vh',
+            overflowY: 'auto'
           }}>
             {/* Cerrar Modal */}
             <button 
@@ -1136,7 +1239,7 @@ const handleSubmit = async (e: React.FormEvent) => {
             }}>
               <button
                 type="button"
-                onClick={() => setAuthMode('register')}
+                onClick={() => { setAuthMode('register'); setFormError(''); }}
                 style={{
                   flex: 1,
                   padding: '10px',
@@ -1154,7 +1257,7 @@ const handleSubmit = async (e: React.FormEvent) => {
               </button>
               <button
                 type="button"
-                onClick={() => setAuthMode('login')}
+                onClick={() => { setAuthMode('login'); setFormError(''); }}
                 style={{
                   flex: 1,
                   padding: '10px',
@@ -1178,6 +1281,21 @@ const handleSubmit = async (e: React.FormEvent) => {
             <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '24px' }}>
               {authMode === 'register' ? 'Ingresa tus credenciales para vincular tu wallet.' : 'Accede a tu panel con tu correo registrado.'}
             </p>
+
+            {formError && (
+              <div style={{
+                background: 'rgba(239, 68, 68, 0.08)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                borderRadius: '10px',
+                padding: '10px 14px',
+                color: '#fca5a5',
+                fontSize: '12.5px',
+                lineHeight: '1.5',
+                marginBottom: '18px'
+              }}>
+                {formError}
+              </div>
+            )}
 
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               
@@ -1208,7 +1326,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                 <label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Correo Electrónico</label>
                 <input 
                   type="email" 
-                  placeholder="nombre@dominio.com" 
+                  placeholder="certchainofficial@gmail.com" 
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   required
@@ -1229,7 +1347,29 @@ const handleSubmit = async (e: React.FormEvent) => {
               {authMode === 'register' && (
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap', gap: 6 }}>
-                    <label style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Wallet de Solana</label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <label style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Wallet de Solana (opcional)</label>
+                      <button
+                        type="button"
+                        onClick={() => setShowWalletHelp(v => !v)}
+                        title="¿Cómo consigo una wallet?"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                          background: showWalletHelp ? 'rgba(153, 69, 255, 0.18)' : 'transparent',
+                          border: '1px solid rgba(153, 69, 255, 0.35)',
+                          color: '#c9a3ff',
+                          borderRadius: '999px',
+                          padding: '2px 8px 2px 6px',
+                          fontSize: '10px',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <HelpCircle size={11} /> ¿Cómo obtengo una?
+                      </button>
+                    </div>
                     <div style={{ display: 'flex', gap: '6px' }}>
                       <button
                         type="button"
@@ -1273,6 +1413,67 @@ const handleSubmit = async (e: React.FormEvent) => {
                       </button>
                     </div>
                   </div>
+
+                  {/* MINI TUTORIAL: CÓMO CREAR UNA WALLET SOLFLARE */}
+                  {showWalletHelp && (
+                    <div style={{
+                      background: 'rgba(252, 114, 26, 0.06)',
+                      border: '1px solid rgba(252, 114, 26, 0.25)',
+                      borderRadius: '10px',
+                      padding: '14px 14px 12px',
+                      marginBottom: '10px'
+                    }}>
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: '6px',
+                        fontSize: '11.5px', fontWeight: 800, color: '#fc9a52', marginBottom: '10px',
+                        textTransform: 'uppercase', letterSpacing: '0.04em'
+                      }}>
+                        <KeyRound size={13} /> Crea tu wallet Solflare en 4 pasos
+                      </div>
+                      <ol style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '7px' }}>
+                        <li style={{ fontSize: '12px', color: '#c7c2dc', lineHeight: '1.5' }}>
+                          Instala la extensión oficial de Solflare en tu navegador (o la app móvil).
+                        </li>
+                        <li style={{ fontSize: '12px', color: '#c7c2dc', lineHeight: '1.5' }}>
+                          Elige "Crear nueva wallet" y guarda tu frase semilla (12-24 palabras) en un lugar seguro, offline. Nunca la compartas con nadie.
+                        </li>
+                        <li style={{ fontSize: '12px', color: '#c7c2dc', lineHeight: '1.5' }}>
+                          Define una contraseña para desbloquear la extensión en este dispositivo.
+                        </li>
+                        <li style={{ fontSize: '12px', color: '#c7c2dc', lineHeight: '1.5' }}>
+                          Copia tu dirección pública (clave pública) desde Solflare y pégala abajo, o simplemente presiona el botón "Solflare" para conectarla automáticamente.
+                        </li>
+                      </ol>
+                      <div style={{ display: 'flex', gap: '10px', marginTop: '12px', flexWrap: 'wrap' }}>
+                        <a
+                          href="https://solflare.com"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '5px',
+                            fontSize: '11px', fontWeight: 700, color: '#fc9a52', textDecoration: 'none'
+                          }}
+                        >
+                          <Download size={12} /> Descargar Solflare <ExternalLink size={10} />
+                        </a>
+                        <a
+                          href="https://phantom.app"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '5px',
+                            fontSize: '11px', fontWeight: 700, color: '#ab9ff2', textDecoration: 'none'
+                          }}
+                        >
+                          <Download size={12} /> Descargar Phantom <ExternalLink size={10} />
+                        </a>
+                      </div>
+                      <div style={{ fontSize: '10.5px', color: '#8b88a3', marginTop: '10px', lineHeight: '1.5' }}>
+                        Este campo es opcional: si aún no tienes una wallet, puedes crear tu cuenta ahora y vincularla más adelante desde tu perfil.
+                      </div>
+                    </div>
+                  )}
+
                   <input 
                       id="solana-wallet-input"
                       type="text" 
@@ -1283,7 +1484,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                       style={{
                         width: '100%',
                         background: 'rgba(255, 255, 255, 0.03)',
-                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        border: `1px solid ${walletAddress ? 'rgba(20, 241, 149, 0.4)' : 'rgba(255, 255, 255, 0.1)'}`,
                         borderRadius: '8px',
                         padding: '12px 14px',
                         color: '#ffffff',
@@ -1292,6 +1493,19 @@ const handleSubmit = async (e: React.FormEvent) => {
                         outline: 'none'
                       }}
                     />
+
+                  {walletAddress ? (
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                      marginTop: '7px', fontSize: '11px', color: '#8ff5c6'
+                    }}>
+                      <Check size={12} /> Wallet lista: {walletAddress.slice(0, 4)}...{walletAddress.slice(-4)}
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: '7px', fontSize: '11px', color: '#716c86' }}>
+                      Puedes agregarla luego desde tu perfil si no tienes una a mano.
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1315,6 +1529,17 @@ const handleSubmit = async (e: React.FormEvent) => {
                     outline: 'none'
                   }}
                 />
+                {authMode === 'login' && (
+                  <div style={{ textAlign: 'right', marginTop: '6px' }}>
+                    <a
+                      href="#"
+                      onClick={(e) => e.preventDefault()}
+                      style={{ fontSize: '11.5px', color: '#9891b8', textDecoration: 'none' }}
+                    >
+                      ¿Olvidaste tu contraseña?
+                    </a>
+                  </div>
+                )}
               </div>
 
               <button
@@ -1331,7 +1556,8 @@ const handleSubmit = async (e: React.FormEvent) => {
                   color: '#ffffff',
                   fontWeight: 700,
                   fontSize: '14px',
-                  cursor: 'pointer',
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  opacity: loading ? 0.7 : 1,
                   marginTop: '10px',
                   boxShadow: '0 4px 15px rgba(0, 0, 0, 0.3)',
                   transition: 'all 0.2s'
@@ -1339,6 +1565,28 @@ const handleSubmit = async (e: React.FormEvent) => {
               >
                 {loading ? 'PROCESANDO...' : (authMode === 'register' ? 'COMPLETAR REGISTRO' : 'INGRESAR AL DASHBOARD')}
               </button>
+
+              <div style={{ textAlign: 'center', fontSize: '12.5px', color: '#716c86' }}>
+                {authMode === 'register' ? (
+                  <>¿Ya tienes cuenta?{' '}
+                    <span
+                      onClick={() => { setAuthMode('login'); setFormError(''); }}
+                      style={{ color: selectedRole === 'client' ? '#14F195' : '#c9a3ff', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Inicia sesión
+                    </span>
+                  </>
+                ) : (
+                  <>¿Aún no tienes cuenta?{' '}
+                    <span
+                      onClick={() => { setAuthMode('register'); setFormError(''); }}
+                      style={{ color: selectedRole === 'client' ? '#14F195' : '#c9a3ff', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Regístrate
+                    </span>
+                  </>
+                )}
+              </div>
             </form>
           </div>
         </div>
