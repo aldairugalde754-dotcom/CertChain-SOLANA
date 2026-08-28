@@ -378,6 +378,20 @@ app.post('/api/auth/register', async (req, res) => {
     res.json({ token, user: userPayload });
   } catch (error) {
     console.error('Error crítico en el proceso de registro:', error);
+    if (error.code === 'ER_DUP_ENTRY') {
+      const msg = error.sqlMessage || error.message || '';
+      if (msg.includes('wallet_address')) {
+        return res.status(400).json({
+          error: 'Esta Wallet de Solana ya está vinculada a otra cuenta con ese rol. Para pruebas piloto, puedes usar la misma wallet en una cuenta de rol distinto.'
+        });
+      }
+      if (msg.includes('email')) {
+        return res.status(400).json({ error: 'El correo electrónico ya está registrado.' });
+      }
+      if (msg.includes('company_name')) {
+        return res.status(400).json({ error: 'El nombre de esta empresa ya está registrado.' });
+      }
+    }
     res.status(500).json({ error: 'Error interno al registrar en la base de datos' });
   }
 });
@@ -1206,6 +1220,30 @@ async function ensureDatabaseTables() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
+
+    // Auto-migración para pruebas piloto: Eliminar índices UNIQUE antiguos sobre wallet_address que bloqueen la reutilización multi-rol
+    try {
+      const [userIndexes] = await db.execute(`
+        SELECT INDEX_NAME 
+        FROM INFORMATION_SCHEMA.STATISTICS 
+        WHERE TABLE_SCHEMA = DATABASE() 
+          AND TABLE_NAME = 'users' 
+          AND COLUMN_NAME = 'wallet_address' 
+          AND NON_UNIQUE = 0
+      `);
+
+      if (Array.isArray(userIndexes) && userIndexes.length > 0) {
+        for (const idx of userIndexes) {
+          if (idx.INDEX_NAME && idx.INDEX_NAME !== 'PRIMARY') {
+            console.log(`[Auto-Migración] Removiendo índice UNIQUE antiguo en users.wallet_address (${idx.INDEX_NAME})...`);
+            await db.execute(`ALTER TABLE users DROP INDEX \`${idx.INDEX_NAME}\``);
+            console.log(`[Auto-Migración] Índice UNIQUE (${idx.INDEX_NAME}) removido exitosamente.`);
+          }
+        }
+      }
+    } catch (idxErr) {
+      console.warn('[Auto-Migración] Advertencia al procesar índice de wallet_address:', idxErr.message);
+    }
 
     await db.execute(`
       CREATE TABLE IF NOT EXISTS certificates (
