@@ -28,7 +28,6 @@ import {
   Copy
 } from 'lucide-react';
 import { connectPhantomWallet, connectSolflareWallet, connectAnySolanaWallet } from '../utils/solanaWallet';
-import { Camera } from 'lucide-react';
 
 
 type Role = 'client' | 'company';
@@ -1062,6 +1061,49 @@ const handleSubmit = async (e: React.FormEvent) => {
           </div>
         </div>
 
+        {/* SECCIÓN TUTORIAL YOUTUBE: CÓMO CREAR Y FONDEAR TU WALLET */}
+        <div style={{ marginBottom: '72px', textAlign: 'center' }}>
+          <div style={{
+            fontFamily: "'JetBrains Mono', monospace", fontSize: '12px', letterSpacing: '0.2em',
+            textTransform: 'uppercase', color: '#14F195', marginBottom: '10px', fontWeight: 700
+          }}>
+            Guía en Video
+          </div>
+          <h2 style={{
+            fontSize: '32px', fontWeight: 800, fontFamily: 'Rajdhani, sans-serif',
+            color: '#f4f2ff', marginBottom: '12px', letterSpacing: '-0.02em'
+          }}>
+            ¿Cómo crear y fondear tu wallet de Solana?
+          </h2>
+          <p style={{ color: '#8b88a3', fontSize: '15px', maxWidth: '620px', margin: '0 auto 36px auto', lineHeight: '1.6' }}>
+            Sigue este tutorial paso a paso para configurar tu wallet (Solflare / Phantom), recargar fondos de prueba en Devnet y comenzar a certificar o adquirir tus activos digitales.
+          </p>
+
+          <div style={{
+            maxWidth: '800px',
+            margin: '0 auto',
+            borderRadius: '20px',
+            overflow: 'hidden',
+            border: '1px solid rgba(153, 69, 255, 0.35)',
+            boxShadow: '0 20px 50px rgba(153, 69, 255, 0.2)',
+            background: '#0d0620',
+            position: 'relative',
+            aspectRatio: '16 / 9'
+          }}>
+            <iframe
+              width="100%"
+              height="100%"
+              src="https://www.youtube.com/embed/ynSMTkRa94k?si=qz4HidvfE7MrJmUm"
+              title="Tutorial: Cómo crear y fondear tu wallet de Solana"
+              frameBorder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              referrerPolicy="strict-origin-when-cross-origin"
+              allowFullScreen
+              style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+            />
+          </div>
+        </div>
+
         {/* CIERRE: RECORDATORIO DE REGISTRO */}
         <div style={{
           borderRadius: '20px',
@@ -1136,7 +1178,7 @@ const handleSubmit = async (e: React.FormEvent) => {
             target="_blank"
             rel="noopener noreferrer"
             aria-label="Instagram de CertChain"
-            title="Instagram"
+            title="Instagram (@certchainofficial)"
             style={{
               width: '38px',
               height: '38px',
@@ -1153,7 +1195,11 @@ const handleSubmit = async (e: React.FormEvent) => {
             onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(153, 69, 255, 0.18)'; e.currentTarget.style.borderColor = '#9945FF'; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(153, 69, 255, 0.08)'; e.currentTarget.style.borderColor = 'rgba(153, 69, 255, 0.25)'; }}
           >
-            <Camera size={17} />
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+              <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+              <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
+            </svg>
           </a>
           <a
             href="https://x.com/CertChain_PJ"
@@ -1471,6 +1517,21 @@ const handleSubmit = async (e: React.FormEvent) => {
                       <div style={{ fontSize: '10.5px', color: '#8b88a3', marginTop: '10px', lineHeight: '1.5' }}>
                         Este campo es opcional: si aún no tienes una wallet, puedes crear tu cuenta ahora y vincularla más adelante desde tu perfil.
                       </div>
+
+                      {/* TUTORIAL YOUTUBE EMBEDDED EN MODAL */}
+                      <div style={{ marginTop: '14px', borderRadius: '10px', overflow: 'hidden', border: '1px solid rgba(252, 114, 26, 0.3)', aspectRatio: '16 / 9' }}>
+                        <iframe
+                          width="100%"
+                          height="100%"
+                          src="https://www.youtube.com/embed/ynSMTkRa94k?si=qz4HidvfE7MrJmUm"
+                          title="Tutorial: Cómo crear y fondear tu wallet"
+                          frameBorder="0"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                          referrerPolicy="strict-origin-when-cross-origin"
+                          allowFullScreen
+                          style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+                        />
+                      </div>
                     </div>
                   )}
 
@@ -1506,6 +1567,20 @@ const handleSubmit = async (e: React.FormEvent) => {
                       Puedes agregarla luego desde tu perfil si no tienes una a mano.
                     </div>
                   )}
+                  
+                  {/* NOTA PILOTO */}
+                  <div style={{
+                    marginTop: '8px',
+                    padding: '8px 10px',
+                    borderRadius: '6px',
+                    background: 'rgba(20, 241, 149, 0.05)',
+                    border: '1px solid rgba(20, 241, 149, 0.15)',
+                    fontSize: '11px',
+                    color: '#a3f7d4',
+                    lineHeight: '1.4'
+                  }}>
+                    ✨ <strong>Pruebas Piloto:</strong> Puedes registrar esta misma wallet en tu cuenta de Empresa y de Coleccionista.
+                  </div>
                 </div>
               )}
 

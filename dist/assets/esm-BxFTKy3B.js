@@ -1,1 +1,0 @@
-import{c as e,s as t}from"./index-Cu03LLu2.js";export{t as createUmi,e as defaultPlugins};

@@ -336,10 +336,21 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ error: 'El correo electrónico ya está registrado' });
     }
 
+    const normalizedRole = (dbRole === 'company') ? 'company' : 'buyer';
+
     if (finalWallet && finalWallet.trim() !== '') {
-      const [existingWallet] = await db.execute('SELECT * FROM users WHERE wallet_address = ?', [finalWallet.trim()]);
+      const cleanWallet = finalWallet.trim();
+      // Excepción para pruebas piloto: permite registrar la misma wallet en roles distintos (Empresa y Coleccionista),
+      // pero evita registros duplicados dentro del mismo tipo de rol.
+      const [existingWallet] = await db.execute(
+        'SELECT * FROM users WHERE LOWER(wallet_address) = LOWER(?) AND role = ?',
+        [cleanWallet, normalizedRole]
+      );
       if (existingWallet.length > 0) {
-        return res.status(400).json({ error: 'Esta Wallet de Solana ya está vinculada a otra cuenta' });
+        const roleLabel = normalizedRole === 'company' ? 'empresa' : 'coleccionista/comprador';
+        return res.status(400).json({
+          error: `Esta Wallet de Solana ya está vinculada a otra cuenta de ${roleLabel}. Para pruebas piloto, puedes usar la misma wallet en una cuenta de rol distinto.`
+        });
       }
     }
 
@@ -933,8 +944,9 @@ app.get('/api/companies/verify-wallet/:walletAddress', async (req, res) => {
 
     const normalizedWallet = wallet.toLowerCase();
 
+    // Filtrar por role = 'company' para asegurar seleccionar el perfil de empresa de la wallet (soporta multi-rol piloto)
     const [rows] = await db.execute(
-      'SELECT id, company_name, wallet_address, role, created_at FROM users WHERE LOWER(wallet_address) = ? LIMIT 1',
+      'SELECT id, company_name, wallet_address, role, created_at FROM users WHERE LOWER(wallet_address) = ? AND role = "company" LIMIT 1',
       [normalizedWallet]
     );
 
